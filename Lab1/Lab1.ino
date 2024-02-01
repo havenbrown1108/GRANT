@@ -123,6 +123,7 @@ void TaskSing(void *pvParameters)  // This is a task.
   }
 }
 
+// Put source of sheet music
 void PlayMegalovania() {
   SetAllPixelsRGB(100,0,0);
 
@@ -440,7 +441,7 @@ void MegSeventhStanza(){
   restNote(1);
 }
 
-
+// Put source of sheet music
 void PlayMiiSong() {
   SetAllPixelsRGB(0,100,0);
 
