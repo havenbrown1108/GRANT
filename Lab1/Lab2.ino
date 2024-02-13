@@ -14,6 +14,8 @@ void restNote(int restLength);
 int noteLength = 150; // controls note length and will effect the speed of songs
 int volume = 40; // Controls amplitude/volume of notes played
 
+// Current color
+int[] color = [0, 0, 0]
 
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
@@ -72,12 +74,17 @@ void TaskSing(void *pvParameters)
   }
 }
 
-void TaskPeriodic(void *pvParameters)
+void TaskPeriodicSound(void *pvParameters)
 {
   PlayChirp(note, volume);
   vTaskDelay(noteLength / portTICK_PERIOD_MS);
   OffChirp();
   vTaskDelay( noteLength * restLength/ portTICK_PERIOD_MS );
+}
+
+void TaskPeriodicLights(void *pvParameters)
+{
+  
 }
 
 void TaskAperiodic(void xpvParameters)
