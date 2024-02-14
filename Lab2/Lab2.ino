@@ -1,19 +1,34 @@
 /* 
-Lab1
-Play songs and blinks 
+Lab2
+Laughs in my face and keeps me up at night
 Version 6.2 03/2018
 */
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
-void TaskPeriodicSound(void *pvParameters);
-void TaskPeriodicLights(void *pvParameters);
-void TaskAperiodic(void *pvParameters);
+void TaskBeepBeep(void *pvParameters);
+void TaskBlinkEyes(void *pvParameters);
+void TaskChangeEyeColor(void *pvParameters);
+void TaskMoveForward(void *pvParameters);
+void TaskEdgeDetector(void *pvParameters);
+void TaskSpinLilGuy(void *pvParameters);
+
 
 // Globals
-int noteLength = 150; // controls note length and will effect the speed of songs
+int beepbeepPeriod = 150; // controls note length and will effect the speed of songs
 int volume = 40; // Controls amplitude/volume of notes played
-int eyeColor[3] = {255, 0, 0};
+
+int eyeColor[3] = {255, 0, 0}; 
+int blinkPeriod = 500;
+
+int remoteInputCheckPeriod = 100;
+
+char edge;
+int edgeDetectorPeriod = 100;
+int movePeriod = 2000;
+TaskHandle_t xSpinHandle, xMoveHandle;
+
+int spinPeriod = 100;
 
 
 void setup(){
@@ -26,104 +41,204 @@ void setup(){
   GetIRButton();
   // RestartTimer();
 
-  xTaskCreate(
-  TaskPeriodicSound
-  ,  (const portCHAR *)"Beep"
-  ,  128 
-  ,  NULL
-  ,  1 
-  ,  NULL );
+  // Setup Navigation
+  delay(1000);
+  NavigationBegin();
+
+  // Edge Detection setup
+  ResetLookAtEdge();
+
+  // Debugging
+  Serial.begin(9600);
+  Serial.println(F("In Setup function"));
+
+  // xTaskCreate(
+  // TaskBeepBeep
+  // ,  (const portCHAR *)"Beep"
+  // ,  128 
+  // ,  NULL
+  // ,  1 
+  // ,  NULL );
+
 
   xTaskCreate(
-  TaskPeriodicLights
-  ,  (const portCHAR *)"Blink"
+  TaskChangeEyeColor
+  ,  (const portCHAR *)"Change Eye Colors"
   ,  128 
   ,  NULL
-  ,  2 
+  ,  5 
   ,  NULL );
 
-  xTaskCreate(
-  TaskAperiodic
-  ,  (const portCHAR *)"Change Colors"
-  ,  128 
-  ,  NULL
-  ,  3 
-  ,  NULL );
+  // Serial.println(F("setup change eye color"));
+
+  // xTaskCreate(
+  // TaskMoveForward
+  // ,  (const portCHAR *)"Move Forward"
+  // ,  128 
+  // ,  NULL
+  // ,  3 
+  // ,  &xMoveHandle );
+
+  // Serial.println(F("Setup MoveForward"));
+
+  // xTaskCreate(
+  // TaskSpinLilGuy
+  // ,  (const portCHAR *)"Change direction"
+  // ,  128 
+  // ,  NULL
+  // ,  4 
+  // ,  &xSpinHandle );
+
+  // Serial.println(F("setup spin lil guy"));
+
+  // xTaskCreate(
+  // TaskEdgeDetector
+  // ,  (const portCHAR *)"Check for edges"
+  // ,  128 
+  // ,  NULL
+  // ,  6 
+  // ,  NULL );
+
+  // Serial.println(F("Setup edge detector"));
+
+
+
+  // vTaskSuspend(xSpinHandle);
+
 }
 
 void loop(){}
 
-
-void TaskPeriodicSound(void *pvParameters)
+// This is a periodic task that makes the bug go beep beep.
+void TaskBeepBeep(void *pvParameters)
 {
   TickType_t xLastWakeTime;
   xLastWakeTime = xTaskGetTickCount();
 
   for(;;)
   {
+    Serial.println("TaskBeepBeep");
+    Serial.println();
     PlayChirp(NOTE_D4, volume);
-    vTaskDelayUntil( &xLastWakeTime, noteLength / portTICK_PERIOD_MS );
-    // vTaskDelay(10000 / portTICK_PERIOD_MS);
+    vTaskDelayUntil( &xLastWakeTime, beepbeepPeriod / portTICK_PERIOD_MS );
     OffChirp();
-    // vTaskDelay(10000 / portTICK_PERIOD_MS);
-    vTaskDelayUntil( &xLastWakeTime, noteLength / portTICK_PERIOD_MS );
+    vTaskDelayUntil( &xLastWakeTime, beepbeepPeriod / portTICK_PERIOD_MS );
   }
 }
 
-void TaskPeriodicLights(void *pvParameters)
-{
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
 
-  for(;;)
-  {
-    SetPixelRGB(EYE_LEFT,eyeColor[0],eyeColor[1],eyeColor[2]);
-    SetPixelRGB(EYE_RIGHT,eyeColor[0],eyeColor[1],eyeColor[2]);
-    vTaskDelayUntil( &xLastWakeTime, 500 / portTICK_PERIOD_MS);
-    OffEyes();
-    vTaskDelayUntil( &xLastWakeTime, 500 / portTICK_PERIOD_MS);
-  }
-}
-
-void TaskAperiodic(void *pvParameters)
+// This is a sporadic task that changes the color of the blinking eyes based on IRButton press.
+void TaskChangeEyeColor(void *pvParameters)
 {
   byte button;
+  TickType_t xLastWakeTime;
+  xLastWakeTime = xTaskGetTickCount();
+
   for(;;)
   {
-    // if (IsIRDone()) {
+    Serial.println("TaskChangeEyeColor");
+    Serial.println();
+    if (IsIRDone()) {
       button = GetIRButton();
       if (button) {
         switch (button) {
           case 1: // If button 1 is pressed change eyes to red
+          // OnEyes(255, 0, 0);
+          // eyeColor = {255, 0, 0};
           eyeColor[0] = 255;
           eyeColor[1] = 0;
           eyeColor[2] = 0;
-          // OnEyes(255, 0, 0);
           RxIRRestart(4);
           break;
           case 2: // If button 2 is pressed change eyes to green
+          // OnEyes(0, 255, 0);
+          // eyeColor = {0, 255, 0};
           eyeColor[0] = 0;
           eyeColor[1] = 255;
           eyeColor[2] = 0;
-          // OnEyes(0, 255, 0);
           RxIRRestart(4);
           break;
           case 3: // If button 3 is pressed change eyes to blue
+          // OnEyes(0, 0, 255);
           eyeColor[0] = 0;
           eyeColor[1] = 0;
           eyeColor[2] = 255;
-          // OnEyes(0, 0, 255);
           RxIRRestart(4);
           break;
+          case 4:
+          OffEyes();
+          RxIRRestart(4);
           default:
           RxIRRestart(4);
           break;
         }
       }
-    // }
-    
+    }
+      
     RxIRRestart(4);
-    vTaskDelay( 100 / portTICK_PERIOD_MS ); 
+
+    OnEyes(eyeColor[0],eyeColor[1],eyeColor[2]);
+    vTaskDelayUntil( &xLastWakeTime, blinkPeriod / portTICK_PERIOD_MS);
+    OffEyes();
+    vTaskDelayUntil( &xLastWakeTime, blinkPeriod / portTICK_PERIOD_MS);
+    
+
+    // vTaskDelay( remoteInputCheckPeriod / portTICK_PERIOD_MS ); 
   }
   
 }
+
+// This is a periodic task that scoots the bug forward
+void TaskMoveForward(void *pvParameters)
+{
+  TickType_t xLastWakeTime;
+  xLastWakeTime = xTaskGetTickCount();
+
+  for(;;)
+  {
+    Motors(50, 50);
+    vTaskDelayUntil( &xLastWakeTime, movePeriod / portTICK_PERIOD_MS);
+  }
+}
+
+// This is a periodic tasks that checks for edges
+void TaskEdgeDetector(void *pvParameters)
+{
+  TickType_t xLastWakeTime;
+  xLastWakeTime = xTaskGetTickCount();
+
+  for(;;)
+  {
+    Serial.println("TaskEdgeDetector");
+    Serial.println();
+    edge = LookForEdge();
+    if(FrontEdgeDetected(edge))
+    {
+      // unsuspend sporadic spinning task
+      vTaskResume(xSpinHandle);
+      vTaskSuspend(xMoveHandle);
+    }
+    vTaskDelayUntil( &xLastWakeTime, edgeDetectorPeriod / portTICK_PERIOD_MS);
+  }
+}
+
+// This is an aperiodic task that spins the lil guy
+void TaskSpinLilGuy(void *pvParameters)
+{
+  for(;;)
+  {
+    // Back up
+    Motors(-50,-50);
+    delay(2000);
+    Motors(0,0);
+    // Turn
+    Motors(50, 0);
+    delay(500);
+    // Stop
+    Motors(0,0);
+
+    vTaskResume(xMoveHandle);
+    vTaskSuspend(xSpinHandle);
+  }
+}
+
