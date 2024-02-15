@@ -106,7 +106,7 @@ void TaskEdgeDetector(void *pvParameters)
 {
   TickType_t xLastWakeTime;
   xLastWakeTime = xTaskGetTickCount();
-  
+
   for(;;)
   {
     edge = LookForEdge();
@@ -151,9 +151,6 @@ void TaskChangeEyeColor(void *pvParameters)
           eyeColor[2] = 255;
           RxIRRestart(4);
           break;
-          case 4:
-          OffEyes();
-          RxIRRestart(4);
           default:
           RxIRRestart(4);
           break;
