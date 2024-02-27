@@ -26,8 +26,19 @@ void TaskSpinLilGuy(void *pvParameters);
 
 // char edge;
 // int edgeDetectorPeriod = 100;
-// TaskHandle_t xSpinHandle;
+TaskHandle_t xStraightHandle;
+TaskHandle_t xTurnHandle;
 int intendedHeading;
+unsigned long startTime = millis();
+int baseSpeed = 30;
+int turnSpeed = 15;
+
+int rightTurnAngle = 71;
+int leftTurnAngle = -64;
+bool turningRight = true;
+int turnAngle = rightTurnAngle;
+
+int numTurns;
 
 
 void setup(){
@@ -45,51 +56,26 @@ void setup(){
   NavigationBegin();
 
   // Edge Detection setup
-  ResetLookAtEdge();
+  // ResetLookAtEdge();
   
-  // xTaskCreate(
-  // TaskBlinkEyes
-  // ,  (const portCHAR *)"Blink"
-  // ,  64 
-  // ,  NULL
-  // ,  1 
-  // ,  NULL );
-
-
-  // xTaskCreate(
-  // TaskChangeEyeColor
-  // ,  (const portCHAR *)"Change Eye Colors"
-  // ,  128 
-  // ,  NULL
-  // ,  2 
-  // ,  NULL );
-
-  // xTaskCreate(
-  // TaskSpinLilGuy
-  // ,  (const portCHAR *)"Change direction"
-  // ,  128 
-  // ,  NULL
-  // ,  4 
-  // ,  &xSpinHandle );
-
-
-  // xTaskCreate(
-  // TaskEdgeDetector
-  // ,  (const portCHAR *)"Check for edges"
-  // ,  128 
-  // ,  NULL
-  // ,  3 
-  // ,  NULL );
-
-  // vTaskSuspend(xSpinHandle);
-  // Motors(50,50);
   xTaskCreate(
   TaskDriveForwardController
   ,  (const portCHAR *)"Drive straight"
   ,  128 
   ,  NULL
   ,  3 
-  ,  NULL );
+  ,  &xStraightHandle );
+
+  xTaskCreate(
+  TaskTurnController
+  ,  (const portCHAR *)"Drive straight"
+  ,  128 
+  ,  NULL
+  ,  3 
+  ,  &xTurnHandle );
+
+  vTaskSuspend(xTurnHandle);
+  numTurns = 0;
 
   intendedHeading = PresentHeading();
   MaintainHeadingReset();
@@ -99,23 +85,44 @@ void loop(){}
 
 void TaskDriveForwardController(void *pvParameters) {
   int Kp = 1;
-  int Ki = 0;
-  int Kd = 0;
+  int Ki = 1;
+  int Kd = 1;
   int P, I = 0, D = 0;
   int currentHeading;
   int error = 0;
   int lastError = 0;
   int speedLeft = 50;
   int speedRight = 50;
-  int baseSpeed = 50;
+
   int u;
 
+
+  startTime = mills();
   for(;;) {
+    unsigned long time = millis() - startTime;
+    if( time >= 4000) {
+      if(numTurns > 3) {
+        // if(turningRight) {
+        turningRight = false;
+        turnAngle = leftTurnAngle;
+        // }
+      }
+      intendedHeading = PresentHeading() + turnAngle;
+
+      P = 0;
+      I = 0;
+      D = 0;
+      numTurns++;
+      vTaskResume(xTurnHandle);
+      vTaskSuspend(xStraightHandle);
+      startTime = millis();
+    }
+    // Serial.println("Driving forward");
+
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
     error = intendedHeading - currentHeading;
-    
     // error is positive when we turn  right and negative when we turn left
 
     P = error;
@@ -138,8 +145,9 @@ void TaskDriveForwardController(void *pvParameters) {
     }
     else {
       OffEyes();
-      speedLeft = baseSpeed;
+      speedLeft = baseSpeed - 6;
       speedRight = baseSpeed;
+
     }
 
     lastError = error;
@@ -148,108 +156,67 @@ void TaskDriveForwardController(void *pvParameters) {
   }
 }
 
-// // This is a periodic task that makes the bug go beep beep.
-// void TaskBlinkEyes(void *pvParameters)
-// {
-//   TickType_t xLastWakeTime;
-//   xLastWakeTime = xTaskGetTickCount();
+void TaskTurnController(void *pvParameters) {
+  // OnEyes(100, 0, 100);
 
-//   for(;;)
-//   {
-//     OnEyes(eyeColor[0],eyeColor[1],eyeColor[2]);
-//     vTaskDelayUntil( &xLastWakeTime, blinkPeriod / portTICK_PERIOD_MS);
-//     OffEyes();
-//     vTaskDelayUntil( &xLastWakeTime, blinkPeriod / portTICK_PERIOD_MS);
-//   }
-// }
+  float Kp = 0.4;
+  int Ki = 0;
+  int Kd = 1;
+  int P, I = 0, D = 0;
+  int currentHeading;
+  int error = 0;
+  int lastError = 0;
+  int speedLeft = 50;
+  int speedRight = 50;
+  int u;
 
-// // This is a periodic tasks that checks for edges
-// void TaskEdgeDetector(void *pvParameters)
-// {
-//   TickType_t xLastWakeTime;
-//   xLastWakeTime = xTaskGetTickCount();
+  for(;;) {
+    // Serial.println("Turning right");
+    SimpleGyroNavigation();
+    currentHeading = PresentHeading();
 
-//   for(;;)
-//   {
-//     edge = LookForEdge();
-//     if(FrontEdgeDetected(edge))
-//     {
-//       // Unsuspend aperiodic "spin maneuver" task
-//       vTaskResume(xSpinHandle);
-//     } 
+    error = intendedHeading - currentHeading;
+    
+    // error is positive when we turn  right and negative when we turn left
 
-//     vTaskDelayUntil( &xLastWakeTime, edgeDetectorPeriod / portTICK_PERIOD_MS);
-//   }
-// }
+    P = error;
+    I = I + error;
+    D = error - lastError;
 
-
-// // This is a sporadic task that changes the color of the blinking eyes based on IRButton press.
-// void TaskChangeEyeColor(void *pvParameters)
-// {
-//   byte button;
-//   TickType_t xLastWakeTime;
-//   xLastWakeTime = xTaskGetTickCount();
-
-//   for(;;)
-//   {
-//       button = GetIRButton();
-//       if (button) {
-//         switch (button) {
-//           case 1: // If button 1 is pressed change eyes to red
-//           eyeColor[0] = 255;
-//           eyeColor[1] = 0;
-//           eyeColor[2] = 0;
-//           RxIRRestart(4);
-//           break;
-//           case 2: // If button 2 is pressed change eyes to green
-//           eyeColor[0] = 0;
-//           eyeColor[1] = 255;
-//           eyeColor[2] = 0;
-//           RxIRRestart(4);
-//           break;
-//           case 3: // If button 3 is pressed change eyes to blue
-//           eyeColor[0] = 0;
-//           eyeColor[1] = 0;
-//           eyeColor[2] = 255;
-//           RxIRRestart(4);
-//           break;
-//           default:
-//           RxIRRestart(4);
-//           break;
-//         }
-//       }
-
-//     RxIRRestart(4);
-//     vTaskDelayUntil(&xLastWakeTime, remoteInputCheckPeriod / portTICK_PERIOD_MS ); 
-//   }
+    u = (Kp*P) + (Ki*I) + (Kd*D);
+    // Serial.print(error);
+    // Serial.print(" , ");
+    // Serial.print(I);
+    // Serial.print(" , ");
+    // Serial.println(D);
   
-// }
+    // The Ringo is veering right, so we need to turn a bit to the left
+    if(error < 0) {
+      OnEyes(100,0,0);
+      speedRight = -u + turnSpeed + 5;
+      speedLeft = 0;
+    }
+    // Vice versa
+    else if(error > 0) {
+      OnEyes(0,100,0);
+      speedLeft = u + turnSpeed;
+      speedRight = 0;
+    }
+    else {
+      OffEyes();
+      speedLeft = 0;
+      speedRight = 0;
+      startTime = millis();
+      
+      P = 0;
+      I = 0;
+      D = 0;
+      vTaskResume(xStraightHandle);
+      vTaskSuspend(xTurnHandle);
+    }
 
-
-// // This is an aperiodic task that spins the lil guy
-// void TaskSpinLilGuy(void *pvParameters)
-// {
-//   for(;;)
-//   {
-//     // Stop and chirp to alert an edge detection
-//     Motors(0,0);
-//     PlayChirp(NOTE_D4, volume);
-//     vTaskDelay(noteLength / portTICK_PERIOD_MS);
-//     OffChirp();
-
-//     // Back up
-//     Motors(-50,-50);
-//     vTaskDelay(2000 / portTICK_PERIOD_MS);
-//     Motors(0,0);
-
-//     // Turn
-//     Motors(50, 0);  
-//     vTaskDelay(500 / portTICK_PERIOD_MS);
-
-//     // Continue forward
-//     Motors(50,50);
-
-//     vTaskSuspend(xSpinHandle);
-//   }
-// }
-
+    lastError = error;
+    Motors(speedLeft, speedRight);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
