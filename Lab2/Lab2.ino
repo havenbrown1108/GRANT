@@ -1,5 +1,5 @@
 /* 
-Lab2
+Lab3
 "Always keep moving forward." -Attack on Titan
 "Keep moving forward." - Meet the Robinsons, the movie EVERYONE else would reference, Ani
 Moves forward until an edge is detected then chirps, backs up, changes direction and continues forward. 
@@ -9,32 +9,27 @@ Version 6.2 03/2018
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
-void TaskBlinkEyes(void *pvParameters);
-void TaskChangeEyeColor(void *pvParameters);
-void TaskEdgeDetector(void *pvParameters);
-void TaskSpinLilGuy(void *pvParameters);
+void TaskDriveForwardController(void *pvParameters);
+void TaskTurnController(void *pvParameters);
 
 
 // Globals
-// int noteLength = 150;
-// int volume = 40; // Controls amplitude/volume of notes played
-
-// int eyeColor[3] = {255, 0, 0}; 
-// int blinkPeriod = 1500;
-
-// int remoteInputCheckPeriod = 1000;
-
-// char edge;
-// int edgeDetectorPeriod = 100;
 TaskHandle_t xStraightHandle;
 TaskHandle_t xTurnHandle;
 int intendedHeading;
+
 unsigned long startTime = millis();
+int drivingStraightTime = 5000;
+
 int baseSpeed = 30;
 int turnSpeed = 15;
+int speedLeft = 50;
+int speedRight = 50;
+
+int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
 
 int rightTurnAngle = 71;
-int leftTurnAngle = -64;
+int leftTurnAngle = -67;
 bool turningRight = true;
 int turnAngle = rightTurnAngle;
 
@@ -54,9 +49,6 @@ void setup(){
   // Setup Navigation
   delay(1000);
   NavigationBegin();
-
-  // Edge Detection setup
-  // ResetLookAtEdge();
   
   xTaskCreate(
   TaskDriveForwardController
@@ -78,7 +70,6 @@ void setup(){
   numTurns = 0;
 
   intendedHeading = PresentHeading();
-  MaintainHeadingReset();
 }
 
 void loop(){}
@@ -91,39 +82,46 @@ void TaskDriveForwardController(void *pvParameters) {
   int currentHeading;
   int error = 0;
   int lastError = 0;
-  int speedLeft = 50;
-  int speedRight = 50;
 
   int u;
 
 
-  startTime = mills();
+  startTime = millis();
   for(;;) {
     unsigned long time = millis() - startTime;
-    if( time >= 4000) {
-      if(numTurns > 3) {
-        // if(turningRight) {
-        turningRight = false;
-        turnAngle = leftTurnAngle;
-        // }
+
+    if( time >= drivingStraightTime) {
+      if(numTurns >= 3) {
+        numTurns = 0;
+        if(turningRight) {
+          turningRight = false;
+          turnAngle = leftTurnAngle;
+        }
+        else {
+          turningRight = true;
+          turnAngle = rightTurnAngle;
+        }
       }
+      else {
+        numTurns++;
+      }
+
       intendedHeading = PresentHeading() + turnAngle;
 
       P = 0;
       I = 0;
       D = 0;
-      numTurns++;
+      lastError = 0;
       vTaskResume(xTurnHandle);
       vTaskSuspend(xStraightHandle);
       startTime = millis();
     }
-    // Serial.println("Driving forward");
 
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
+    // Error is positive when we turn  right and negative when we turn left
     error = intendedHeading - currentHeading;
-    // error is positive when we turn  right and negative when we turn left
 
     P = error;
     I = I + error;
@@ -145,9 +143,8 @@ void TaskDriveForwardController(void *pvParameters) {
     }
     else {
       OffEyes();
-      speedLeft = baseSpeed - 6;
+      speedLeft = baseSpeed - motorBias;
       speedRight = baseSpeed;
-
     }
 
     lastError = error;
@@ -157,8 +154,6 @@ void TaskDriveForwardController(void *pvParameters) {
 }
 
 void TaskTurnController(void *pvParameters) {
-  // OnEyes(100, 0, 100);
-
   float Kp = 0.4;
   int Ki = 0;
   int Kd = 1;
@@ -166,34 +161,24 @@ void TaskTurnController(void *pvParameters) {
   int currentHeading;
   int error = 0;
   int lastError = 0;
-  int speedLeft = 50;
-  int speedRight = 50;
   int u;
 
   for(;;) {
-    // Serial.println("Turning right");
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
     error = intendedHeading - currentHeading;
-    
-    // error is positive when we turn  right and negative when we turn left
 
     P = error;
     I = I + error;
     D = error - lastError;
 
     u = (Kp*P) + (Ki*I) + (Kd*D);
-    // Serial.print(error);
-    // Serial.print(" , ");
-    // Serial.print(I);
-    // Serial.print(" , ");
-    // Serial.println(D);
   
     // The Ringo is veering right, so we need to turn a bit to the left
     if(error < 0) {
       OnEyes(100,0,0);
-      speedRight = -u + turnSpeed + 5;
+      speedRight = -u + turnSpeed + motorBias;
       speedLeft = 0;
     }
     // Vice versa
@@ -211,6 +196,7 @@ void TaskTurnController(void *pvParameters) {
       P = 0;
       I = 0;
       D = 0;
+      lastError = 0;
       vTaskResume(xStraightHandle);
       vTaskSuspend(xTurnHandle);
     }
