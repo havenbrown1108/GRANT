@@ -1,6 +1,4 @@
 {
-    "configuration": "cpu=16MHzatmega328",
     "board": "arduino:avr:pro",
-    "port": "COM5",
-    "sketch": "GrantsCode\\GrantsCode.ino"
+    "port": "COM5"
 }
