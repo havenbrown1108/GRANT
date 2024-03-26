@@ -120,12 +120,12 @@ void TaskDoSquares(void *pvParameters) {
 
           drivingStraight = false;
           intendedHeading = PresentHeading() + turnAngle;
-          turnAdjustment = baseSpeed;
           startTime = millis();
           Kp = 0.4;
           Ki = 0;
           Kd = 1;
           baseSpeed = 7;
+          turnAdjustment = baseSpeed;
 
           newManoevreDetected = true;
         }
