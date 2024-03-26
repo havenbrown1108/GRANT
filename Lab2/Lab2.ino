@@ -1,5 +1,5 @@
 /* 
-Lab2
+Lab3
 "Always keep moving forward." -Attack on Titan
 "Keep moving forward." - Meet the Robinsons, the movie EVERYONE else would reference, Ani
 Moves forward until an edge is detected then chirps, backs up, changes direction and continues forward. 
@@ -9,28 +9,36 @@ Version 6.2 03/2018
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
-void TaskBlinkEyes(void *pvParameters);
-void TaskChangeEyeColor(void *pvParameters);
-void TaskEdgeDetector(void *pvParameters);
-void TaskSpinLilGuy(void *pvParameters);
+void TaskDriveForwardController(void *pvParameters);
+void TaskTurnController(void *pvParameters);
 
 
 // Globals
-int noteLength = 150;
-int volume = 40; // Controls amplitude/volume of notes played
+TaskHandle_t xStraightHandle;
+TaskHandle_t xTurnHandle;
+int intendedHeading;
 
-int eyeColor[3] = {255, 0, 0}; 
-int blinkPeriod = 1500;
+unsigned long startTime = millis();
+int drivingStraightTime = 5000;
 
-int remoteInputCheckPeriod = 1000;
+int baseSpeed = 30;
+int turnSpeed = 15;
+int speedLeft = 50;
+int speedRight = 50;
 
-char edge;
-int edgeDetectorPeriod = 100;
-TaskHandle_t xSpinHandle;
+int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
+
+int rightTurnAngle = 71;
+int leftTurnAngle = -67;
+bool turningRight = true;
+int turnAngle = rightTurnAngle;
+
+int numTurns;
 
 
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
+  SetAllPixelsRGB(0, 0, 0);
   SwitchButtonToPixels(); //set shared line to control NeoPixel lights
   SwitchMotorsToSerial(); //Call "SwitchMotorsToSerial()" before using Serial.print functions as motors & serial share a line
   // Set up for IR
@@ -41,153 +49,160 @@ void setup(){
   // Setup Navigation
   delay(1000);
   NavigationBegin();
-
-  // Edge Detection setup
-  ResetLookAtEdge();
   
   xTaskCreate(
-  TaskBlinkEyes
-  ,  (const portCHAR *)"Blink"
-  ,  64 
-  ,  NULL
-  ,  1 
-  ,  NULL );
-
-
-  xTaskCreate(
-  TaskChangeEyeColor
-  ,  (const portCHAR *)"Change Eye Colors"
-  ,  128 
-  ,  NULL
-  ,  2 
-  ,  NULL );
-
-  xTaskCreate(
-  TaskSpinLilGuy
-  ,  (const portCHAR *)"Change direction"
-  ,  128 
-  ,  NULL
-  ,  4 
-  ,  &xSpinHandle );
-
-
-  xTaskCreate(
-  TaskEdgeDetector
-  ,  (const portCHAR *)"Check for edges"
+  TaskDriveForwardController
+  ,  (const portCHAR *)"Drive straight"
   ,  128 
   ,  NULL
   ,  3 
-  ,  NULL );
+  ,  &xStraightHandle );
 
-  vTaskSuspend(xSpinHandle);
-  Motors(50,50);
+  xTaskCreate(
+  TaskTurnController
+  ,  (const portCHAR *)"Drive straight"
+  ,  128 
+  ,  NULL
+  ,  3 
+  ,  &xTurnHandle );
+
+  vTaskSuspend(xTurnHandle);
+  numTurns = 0;
+
+  intendedHeading = PresentHeading();
 }
 
 void loop(){}
 
+void TaskDriveForwardController(void *pvParameters) {
+  int Kp = 1;
+  int Ki = 1;
+  int Kd = 1;
+  int P, I = 0, D = 0;
+  int currentHeading;
+  int error = 0;
+  int lastError = 0;
 
-// This is a periodic task that makes the bug go beep beep.
-void TaskBlinkEyes(void *pvParameters)
-{
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
-
-  for(;;)
-  {
-    OnEyes(eyeColor[0],eyeColor[1],eyeColor[2]);
-    vTaskDelayUntil( &xLastWakeTime, blinkPeriod / portTICK_PERIOD_MS);
-    OffEyes();
-    vTaskDelayUntil( &xLastWakeTime, blinkPeriod / portTICK_PERIOD_MS);
-  }
-}
-
-// This is a periodic tasks that checks for edges
-void TaskEdgeDetector(void *pvParameters)
-{
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
-
-  for(;;)
-  {
-    edge = LookForEdge();
-    if(FrontEdgeDetected(edge))
-    {
-      // Unsuspend aperiodic "spin maneuver" task
-      vTaskResume(xSpinHandle);
-    } 
-
-    vTaskDelayUntil( &xLastWakeTime, edgeDetectorPeriod / portTICK_PERIOD_MS);
-  }
-}
+  int u;
 
 
-// This is a sporadic task that changes the color of the blinking eyes based on IRButton press.
-void TaskChangeEyeColor(void *pvParameters)
-{
-  byte button;
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
+  startTime = millis();
+  for(;;) {
+    unsigned long time = millis() - startTime;
 
-  for(;;)
-  {
-      button = GetIRButton();
-      if (button) {
-        switch (button) {
-          case 1: // If button 1 is pressed change eyes to red
-          eyeColor[0] = 255;
-          eyeColor[1] = 0;
-          eyeColor[2] = 0;
-          RxIRRestart(4);
-          break;
-          case 2: // If button 2 is pressed change eyes to green
-          eyeColor[0] = 0;
-          eyeColor[1] = 255;
-          eyeColor[2] = 0;
-          RxIRRestart(4);
-          break;
-          case 3: // If button 3 is pressed change eyes to blue
-          eyeColor[0] = 0;
-          eyeColor[1] = 0;
-          eyeColor[2] = 255;
-          RxIRRestart(4);
-          break;
-          default:
-          RxIRRestart(4);
-          break;
+    if( time >= drivingStraightTime) {
+      if(numTurns >= 3) {
+        numTurns = 0;
+        if(turningRight) {
+          turningRight = false;
+          turnAngle = leftTurnAngle;
+        }
+        else {
+          turningRight = true;
+          turnAngle = rightTurnAngle;
         }
       }
+      else {
+        numTurns++;
+      }
 
-    RxIRRestart(4);
-    vTaskDelayUntil(&xLastWakeTime, remoteInputCheckPeriod / portTICK_PERIOD_MS ); 
-  }
+      intendedHeading = PresentHeading() + turnAngle;
+
+      P = 0;
+      I = 0;
+      D = 0;
+      lastError = 0;
+      vTaskResume(xTurnHandle);
+      vTaskSuspend(xStraightHandle);
+      startTime = millis();
+    }
+
+    SimpleGyroNavigation();
+    currentHeading = PresentHeading();
+
+    // Error is positive when we turn  right and negative when we turn left
+    error = intendedHeading - currentHeading;
+
+    P = error;
+    I = I + error;
+    D = error - lastError;
+
+    u = (Kp*P) + (Ki*I) + (Kd*D);
   
-}
+    // The Ringo is veering right, so we need to turn a bit to the left
+    if(error < 0) {
+      OnEyes(100,0,0);
+      speedRight = -u + baseSpeed;
+      speedLeft = baseSpeed;
+    }
+    // Vice versa
+    else if(error > 0) {
+      OnEyes(0,100,0);
+      speedLeft = u + baseSpeed;
+      speedRight = baseSpeed;
+    }
+    else {
+      OffEyes();
+      speedLeft = baseSpeed - motorBias;
+      speedRight = baseSpeed;
+    }
 
-
-// This is an aperiodic task that spins the lil guy
-void TaskSpinLilGuy(void *pvParameters)
-{
-  for(;;)
-  {
-    // Stop and chirp to alert an edge detection
-    Motors(0,0);
-    PlayChirp(NOTE_D4, volume);
-    vTaskDelay(noteLength / portTICK_PERIOD_MS);
-    OffChirp();
-
-    // Back up
-    Motors(-50,-50);
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    Motors(0,0);
-
-    // Turn
-    Motors(50, 0);  
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-
-    // Continue forward
-    Motors(50,50);
-
-    vTaskSuspend(xSpinHandle);
+    lastError = error;
+    Motors(speedLeft, speedRight);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
+void TaskTurnController(void *pvParameters) {
+  float Kp = 0.4;
+  int Ki = 0;
+  int Kd = 1;
+  int P, I = 0, D = 0;
+  int currentHeading;
+  int error = 0;
+  int lastError = 0;
+  int u;
+
+  for(;;) {
+    SimpleGyroNavigation();
+    currentHeading = PresentHeading();
+
+    error = intendedHeading - currentHeading;
+
+    P = error;
+    I = I + error;
+    D = error - lastError;
+
+    u = (Kp*P) + (Ki*I) + (Kd*D);
+  
+    // The Ringo is veering right, so we need to turn a bit to the left
+    if(error < 0) {
+      OnEyes(100,0,0);
+      speedRight = -u + turnSpeed + motorBias;
+      speedLeft = 0;
+    }
+    // Vice versa
+    else if(error > 0) {
+      OnEyes(0,100,0);
+      speedLeft = u + turnSpeed;
+      speedRight = 0;
+    }
+    else {
+      OffEyes();
+      speedLeft = 0;
+      speedRight = 0;
+      startTime = millis();
+      
+      P = 0;
+      I = 0;
+      D = 0;
+      lastError = 0;
+      vTaskResume(xStraightHandle);
+      vTaskSuspend(xTurnHandle);
+    }
+
+    lastError = error;
+    Motors(speedLeft, speedRight);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
