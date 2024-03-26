@@ -1,10 +1,6 @@
 /* 
-Lab3
-"Always keep moving forward." -Attack on Titan
-"Keep moving forward." - Meet the Robinsons, the movie EVERYONE else would reference, Ani
-Moves forward until an edge is detected then chirps, backs up, changes direction and continues forward. 
-During movement the eyes blink periodically. The color of the eyes can be changed by the IRRemote.
-Version 6.2 03/2018
+Lab4
+
 */
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
@@ -14,19 +10,21 @@ void TaskTurnController(void *pvParameters);
 
 
 // Globals
-TaskHandle_t xStraightHandle;
-TaskHandle_t xTurnHandle;
-int intendedHeading;
+TaskHandle_t xControllerHandle;
+TaskHandle_t xDoSquaresHandle;
+TaskHandle_t xPlanningAndGuidanceHandle;
 
-unsigned long startTime = millis();
-int drivingStraightTime = 5000;
+float guidancePeriod = 150;
+float controllerPeriod = 100;
+
+int intendedHeading;
+int error = 0;
+
+
 
 int baseSpeed = 30;
-int turnSpeed = 15;
-int speedLeft = 50;
-int speedRight = 50;
-
 int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
+int turnAdjustment = 0;
 
 int rightTurnAngle = 71;
 int leftTurnAngle = -67;
@@ -34,6 +32,11 @@ bool turningRight = true;
 int turnAngle = rightTurnAngle;
 
 int numTurns;
+
+float Kp = 1;
+float Ki = 1;
+float Kd = 1;
+bool newManoevreDetected;
 
 
 void setup(){
@@ -51,22 +54,30 @@ void setup(){
   NavigationBegin();
   
   xTaskCreate(
-  TaskDriveForwardController
+  TaskPlanningAndGuidance
   ,  (const portCHAR *)"Drive straight"
   ,  128 
   ,  NULL
   ,  3 
-  ,  &xStraightHandle );
+  ,  &xPlanningAndGuidanceHandle );
 
   xTaskCreate(
-  TaskTurnController
-  ,  (const portCHAR *)"Drive straight"
+  TaskDoSquares
+  ,  (const portCHAR *)"Drive in squares"
   ,  128 
   ,  NULL
   ,  3 
-  ,  &xTurnHandle );
+  ,  &xDoSquaresHandle );
 
-  vTaskSuspend(xTurnHandle);
+  xTaskCreate(
+  TaskController
+  ,  (const portCHAR *)"Drive in direction of intended heading"
+  ,  128 
+  ,  NULL
+  ,  3 
+  ,  &xControllerHandle );
+
+  vTaskSuspend(xDoSquaresHandle);
   numTurns = 0;
 
   intendedHeading = PresentHeading();
@@ -74,53 +85,91 @@ void setup(){
 
 void loop(){}
 
-void TaskDriveForwardController(void *pvParameters) {
-  int Kp = 1;
-  int Ki = 1;
-  int Kd = 1;
+void TaskPlanningAndGuidance(void *pvParameters)
+{
+  for(;;) {
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    vTaskResume(xDoSquaresHandle);
+  }
+}
+
+void TaskDoSquares(void *pvParameters) {
+  bool drivingStraight = true;
+  unsigned long startTime = millis();
+  int drivingStraightTime = 5000;
+  unsigned long time = millis() - startTime;
+
+  for(;;) {
+    time = millis() - startTime;
+    if(drivingStraight) {
+      if( time >= drivingStraightTime) { // We need to do a turn
+          if(numTurns >= 3) {
+            numTurns = 0;
+            if(turningRight) {
+              turningRight = false;
+              turnAngle = leftTurnAngle;
+            }
+            else {
+              turningRight = true;
+              turnAngle = rightTurnAngle;
+            }
+          }
+          else {
+            numTurns++;
+          }
+
+          drivingStraight = false;
+          intendedHeading = PresentHeading() + turnAngle;
+          turnAdjustment = baseSpeed;
+          startTime = millis();
+          Kp = 0.4;
+          Ki = 0;
+          Kd = 1;
+          baseSpeed = 7;
+
+          newManoevreDetected = true;
+        }
+    }
+    else if(error == 0) { // We should drive straight again. 
+      drivingStraight = true;
+      startTime = millis();
+      Kp = 1;
+      Ki = 1;
+      Kd = 1;
+      baseSpeed = 30;
+      turnAdjustment = 0;
+      newManoevreDetected = true;
+    }
+
+    vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
+  }
+
+}
+
+void TaskController(void *pvParameters) {
   int P, I = 0, D = 0;
   int currentHeading;
   int error = 0;
   int lastError = 0;
+  int speedLeft = 50;
+  int speedRight = 50;
 
   int u;
 
-
-  startTime = millis();
   for(;;) {
-    unsigned long time = millis() - startTime;
 
-    if( time >= drivingStraightTime) {
-      if(numTurns >= 3) {
-        numTurns = 0;
-        if(turningRight) {
-          turningRight = false;
-          turnAngle = leftTurnAngle;
-        }
-        else {
-          turningRight = true;
-          turnAngle = rightTurnAngle;
-        }
-      }
-      else {
-        numTurns++;
-      }
-
-      intendedHeading = PresentHeading() + turnAngle;
-
+    if(newManoevreDetected) {
+      OffEyes();
+      lastError = 0;
       P = 0;
       I = 0;
       D = 0;
-      lastError = 0;
-      vTaskResume(xTurnHandle);
-      vTaskSuspend(xStraightHandle);
-      startTime = millis();
+      newManoevreDetected = false;
     }
 
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
-    // Error is positive when we turn  right and negative when we turn left
     error = intendedHeading - currentHeading;
 
     P = error;
@@ -132,77 +181,23 @@ void TaskDriveForwardController(void *pvParameters) {
     // The Ringo is veering right, so we need to turn a bit to the left
     if(error < 0) {
       OnEyes(100,0,0);
-      speedRight = -u + baseSpeed;
-      speedLeft = baseSpeed;
+      speedRight = -u + baseSpeed + motorBias;
+      speedLeft = baseSpeed - turnAdjustment;
     }
     // Vice versa
     else if(error > 0) {
       OnEyes(0,100,0);
       speedLeft = u + baseSpeed;
-      speedRight = baseSpeed;
+      speedRight = baseSpeed - turnAdjustment;
     }
     else {
       OffEyes();
-      speedLeft = baseSpeed - motorBias;
-      speedRight = baseSpeed;
+      speedLeft = max(baseSpeed - motorBias - turnAdjustment, 0);
+      speedRight = max(baseSpeed - turnAdjustment, 0);
     }
 
     lastError = error;
     Motors(speedLeft, speedRight);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
-}
-
-void TaskTurnController(void *pvParameters) {
-  float Kp = 0.4;
-  int Ki = 0;
-  int Kd = 1;
-  int P, I = 0, D = 0;
-  int currentHeading;
-  int error = 0;
-  int lastError = 0;
-  int u;
-
-  for(;;) {
-    SimpleGyroNavigation();
-    currentHeading = PresentHeading();
-
-    error = intendedHeading - currentHeading;
-
-    P = error;
-    I = I + error;
-    D = error - lastError;
-
-    u = (Kp*P) + (Ki*I) + (Kd*D);
-  
-    // The Ringo is veering right, so we need to turn a bit to the left
-    if(error < 0) {
-      OnEyes(100,0,0);
-      speedRight = -u + turnSpeed + motorBias;
-      speedLeft = 0;
-    }
-    // Vice versa
-    else if(error > 0) {
-      OnEyes(0,100,0);
-      speedLeft = u + turnSpeed;
-      speedRight = 0;
-    }
-    else {
-      OffEyes();
-      speedLeft = 0;
-      speedRight = 0;
-      startTime = millis();
-      
-      P = 0;
-      I = 0;
-      D = 0;
-      lastError = 0;
-      vTaskResume(xStraightHandle);
-      vTaskSuspend(xTurnHandle);
-    }
-
-    lastError = error;
-    Motors(speedLeft, speedRight);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
 }
