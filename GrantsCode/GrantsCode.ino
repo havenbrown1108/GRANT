@@ -7,12 +7,15 @@ Lab4
 
 void TaskDriveForwardController(void *pvParameters);
 void TaskTurnController(void *pvParameters);
+void TaskSensing(void *pvParameters);
 
 
 // Globals
 TaskHandle_t xControllerHandle;
 TaskHandle_t xDoSquaresHandle;
 TaskHandle_t xPlanningAndGuidanceHandle;
+TaskHandle_t xSensingHandle;
+TaskHandle_t xSpinHandle;
 
 float guidancePeriod = 150;
 float controllerPeriod = 100;
@@ -38,6 +41,9 @@ float Ki = 1;
 float Kd = 1;
 bool newManoevreDetected;
 
+char edge;
+int edgeDetectorPeriod = 100;
+
 
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
@@ -52,6 +58,8 @@ void setup(){
   // Setup Navigation
   delay(1000);
   NavigationBegin();
+
+  ResetLookAtEdge();
   
   xTaskCreate(
   TaskPlanningAndGuidance
@@ -76,6 +84,22 @@ void setup(){
   ,  NULL
   ,  3 
   ,  &xControllerHandle );
+
+  xTaskCreate(
+  TaskSensing
+  ,  (const portCHAR *)"Check for edges"
+  ,  128 
+  ,  NULL
+  ,  3 
+  ,  &xSensingHandle );
+
+  xTaskCreate(
+  TaskSpinLilGuy
+  ,  (const portCHAR *)"Change direction"
+  ,  128 
+  ,  NULL
+  ,  4 
+  ,  &xSpinHandle );
 
   vTaskSuspend(xDoSquaresHandle);
   numTurns = 0;
@@ -199,5 +223,52 @@ void TaskController(void *pvParameters) {
     lastError = error;
     Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
+  }
+}
+
+void TaskSensing(void *pvParameters) {
+    TickType_t xLastWakeTime;
+    xLastWakeTime = xTaskGetTickCount();
+
+    for(;;)
+    {
+        edge = LookForEdge();
+        if(FrontEdgeDetected(edge))
+        {
+            // Handle right front edge detected
+            vTaskResume(xSpinHandle);
+        }
+
+        vTaskDelayUntil( &xLastWakeTime, edgeDetectorPeriod / portTICK_PERIOD_MS);
+    }
+}
+
+// This is an aperiodic task that spins the lil guy
+void TaskSpinLilGuy(void *pvParameters)
+{
+  for(;;)
+  {
+    // Stop and chirp to alert an edge detection
+    Motors(0,0);
+
+    // Back up
+    Motors(-50,-50);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    Motors(0,0);
+
+    // Turn
+    if (RightFrontEdgeDetected(edge)) {
+        Motors(50, 0);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+    } else if (LeftFrontEdgeDetected(edge)) {
+        Motors(50, 0);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
+    
+
+    // Continue forward
+    Motors(50,50);
+
+    vTaskSuspend(xSpinHandle);
   }
 }
