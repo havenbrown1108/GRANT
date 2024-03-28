@@ -237,6 +237,7 @@ void TaskSensing(void *pvParameters) {
         {
             // Handle right front edge detected
             vTaskResume(xSpinHandle);
+            vTaskSuspend(xSensingHandle);
         }
 
         vTaskDelayUntil( &xLastWakeTime, edgeDetectorPeriod / portTICK_PERIOD_MS);
