@@ -271,5 +271,6 @@ void TaskSpinLilGuy(void *pvParameters)
     Motors(50,50);
 
     vTaskSuspend(xSpinHandle);
+    vTaskResume(xSensingHandle);
   }
 }
