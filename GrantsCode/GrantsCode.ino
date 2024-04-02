@@ -12,13 +12,15 @@ void TaskSensing(void *pvParameters);
 
 // Globals
 TaskHandle_t xControllerHandle;
-TaskHandle_t xDoSquaresHandle;
-TaskHandle_t xPlanningAndGuidanceHandle;
+// TaskHandle_t xDoSquaresHandle;
+// TaskHandle_t xPlanningAndGuidanceHandle;
 TaskHandle_t xSensingHandle;
-TaskHandle_t xSpinHandle;
+// TaskHandle_t xAvoidObstacleHandle;
+TaskHandle_t xNavigateMazeHandle;
 
-float guidancePeriod = 150;
+float guidancePeriod = 200;
 float controllerPeriod = 100;
+int edgeDetectorPeriod = 50;
 
 int intendedHeading;
 int error = 0;
@@ -26,23 +28,26 @@ int error = 0;
 
 
 int baseSpeed = 30;
+int maxSpeed = 100;
 int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
 int turnAdjustment = 0;
 
 int rightTurnAngle = 71;
 int leftTurnAngle = -67;
-bool turningRight = true;
-int turnAngle = rightTurnAngle;
+// bool turningRight = true;
+// int turnAngle = rightTurnAngle;
 
 int numTurns;
 
 float Kp = 1;
 float Ki = 1;
 float Kd = 1;
-bool newManoevreDetected;
+bool newManueverDetected;
 
 char edge;
-int edgeDetectorPeriod = 100;
+
+enum Manuever { DriveStraight, Backup, TurningRight, TurningLeft};
+Manuever manuever;
 
 
 void setup(){
@@ -60,30 +65,22 @@ void setup(){
   NavigationBegin();
 
   ResetLookAtEdge();
-  
-  xTaskCreate(
-  TaskPlanningAndGuidance
-  ,  (const portCHAR *)"Drive straight"
-  ,  128 
-  ,  NULL
-  ,  3 
-  ,  &xPlanningAndGuidanceHandle );
 
   xTaskCreate(
-  TaskDoSquares
-  ,  (const portCHAR *)"Drive in squares"
+  TaskNavigateMaze
+  ,  (const portCHAR *)"maze guidance task"
   ,  128 
   ,  NULL
   ,  3 
-  ,  &xDoSquaresHandle );
+  ,  &xNavigateMazeHandle );
 
-  xTaskCreate(
-  TaskController
-  ,  (const portCHAR *)"Drive in direction of intended heading"
-  ,  128 
-  ,  NULL
-  ,  3 
-  ,  &xControllerHandle );
+  // xTaskCreate(
+  // TaskController
+  // ,  (const portCHAR *)"Drive in direction of intended heading"
+  // ,  128 
+  // ,  NULL
+  // ,  2 
+  // ,  &xControllerHandle );
 
   xTaskCreate(
   TaskSensing
@@ -93,82 +90,118 @@ void setup(){
   ,  3 
   ,  &xSensingHandle );
 
-  xTaskCreate(
-  TaskSpinLilGuy
-  ,  (const portCHAR *)"Change direction"
-  ,  128 
-  ,  NULL
-  ,  4 
-  ,  &xSpinHandle );
-
-  vTaskSuspend(xDoSquaresHandle);
-  numTurns = 0;
+  edge = 0x0;
+  Serial.println("setup");
 
   intendedHeading = PresentHeading();
+  manuever = DriveStraight;
 }
 
 void loop(){}
 
-void TaskPlanningAndGuidance(void *pvParameters)
-{
-  for(;;) {
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-    vTaskResume(xDoSquaresHandle);
-  }
-}
-
-void TaskDoSquares(void *pvParameters) {
+void TaskNavigateMaze(void *pvParameters) {
   bool drivingStraight = true;
   unsigned long startTime = millis();
-  int drivingStraightTime = 5000;
+  // int drivingStraightTime = 5000;
+  int backingupTimeLimit = 1000;
   unsigned long time = millis() - startTime;
+  Serial.println("NavigateMaze");
 
   for(;;) {
+    // Serial.println("start" + time);
+
     time = millis() - startTime;
-    if(drivingStraight) {
-      if( time >= drivingStraightTime) { // We need to do a turn
-          if(numTurns >= 3) {
-            numTurns = 0;
-            if(turningRight) {
-              turningRight = false;
-              turnAngle = leftTurnAngle;
-            }
-            else {
-              turningRight = true;
-              turnAngle = rightTurnAngle;
-            }
-          }
-          else {
-            numTurns++;
-          }
 
-          drivingStraight = false;
-          intendedHeading = PresentHeading() + turnAngle;
-          startTime = millis();
-          Kp = 0.4;
-          Ki = 0;
-          Kd = 1;
-          baseSpeed = 7;
-          turnAdjustment = baseSpeed;
-
-          newManoevreDetected = true;
-        }
+    // Logic for when to change state
+    switch (manuever)
+    {
+    case DriveStraight:
+      if(FrontEdgeDetected(edge)) {
+        manuever = Backup;
+        newManueverDetected = true;
+      }
+      break;
+    case Backup:
+      bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+      if(timeLimitReached && RightFrontEdgeDetected(edge)) {
+        manuever = TurningLeft;
+        edge = 0x0;
+        newManueverDetected = true;
+      } 
+      else if(timeLimitReached && LeftFrontEdgeDetected(edge)) {
+        manuever = TurningRight;
+        edge = 0x0;
+        newManueverDetected = true;
+      }
+      break;
+    case TurningRight:
+      if(error == 0) {
+        manuever = DriveStraight;
+        newManueverDetected = true;
+      }
+      break;
+    case TurningLeft:
+      if(error == 0) {
+        manuever = DriveStraight;
+        newManueverDetected = true;
+      }
+      break;
+    default:
+      break;
     }
-    else if(error == 0) { // We should drive straight again. 
-      drivingStraight = true;
-      startTime = millis();
-      Kp = 1;
-      Ki = 1;
-      Kd = 1;
-      baseSpeed = 30;
-      turnAdjustment = 0;
-      newManoevreDetected = true;
+
+    // Logic for how to change state
+    if(newManueverDetected) {
+          switch (manuever)
+          {
+            case DriveStraight:
+              Serial.println("manuever is now DriveStraight");
+              intendedHeading = PresentHeading();
+              Kp = 1;
+              Ki = 1;
+              Kd = 1;
+              baseSpeed = 30;
+              turnAdjustment = 0;
+              break;
+            case Backup:
+              Serial.println("manuever is now Backup");
+              intendedHeading = PresentHeading();
+              Kp = 1;
+              Ki = 1;
+              Kd = 1;
+              baseSpeed = -30;
+              turnAdjustment = 0;
+              startTime = millis();
+              break;
+            case TurningRight:
+              Serial.println("manuever is now TurningRight");
+              intendedHeading = PresentHeading() + (rightTurnAngle / 2);
+              Kp = 0.4;
+              Ki = 0;
+              Kd = 1;
+              baseSpeed = 15;
+              turnAdjustment = baseSpeed;
+              break;
+            case TurningLeft:
+              Serial.println("manuever is now TurningLeft");
+              intendedHeading = PresentHeading() + (leftTurnAngle / 2);
+              Kp = 0.4;
+              Ki = 0;
+              Kd = 1;
+              baseSpeed = 15;
+              turnAdjustment = baseSpeed;
+              break;
+            default:
+              break;
+          }
     }
 
     vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
 
 }
+
+
 
 void TaskController(void *pvParameters) {
   int P, I = 0, D = 0;
@@ -182,13 +215,14 @@ void TaskController(void *pvParameters) {
 
   for(;;) {
 
-    if(newManoevreDetected) {
+    if(newManueverDetected) {
       OffEyes();
+      error = 0;
       lastError = 0;
       P = 0;
       I = 0;
       D = 0;
-      newManoevreDetected = false;
+      newManueverDetected = false;
     }
 
     SimpleGyroNavigation();
@@ -221,56 +255,54 @@ void TaskController(void *pvParameters) {
     }
 
     lastError = error;
+
+    speedLeft = min(speedLeft, maxSpeed);
+    speedRight = min(speedRight, maxSpeed);
     Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
 }
 
 void TaskSensing(void *pvParameters) {
-    TickType_t xLastWakeTime;
-    xLastWakeTime = xTaskGetTickCount();
+    // TickType_t xLastWakeTime;
+    // xLastWakeTime = xTaskGetTickCount();
+    Serial.println("sensing task");
 
     for(;;)
     {
         edge = LookForEdge();
-        if(FrontEdgeDetected(edge))
-        {
-            // Handle right front edge detected
-            vTaskResume(xSpinHandle);
-            vTaskSuspend(xSensingHandle);
-        }
 
-        vTaskDelayUntil( &xLastWakeTime, edgeDetectorPeriod / portTICK_PERIOD_MS);
+        vTaskDelay( edgeDetectorPeriod / portTICK_PERIOD_MS);
     }
 }
 
 // This is an aperiodic task that spins the lil guy
-void TaskSpinLilGuy(void *pvParameters)
-{
-  for(;;)
-  {
-    // Stop and chirp to alert an edge detection
-    Motors(0,0);
+// void TaskAvoidObstacle(void *pvParameters)
+// {
+//   for(;;)
+//   {
+//     // Stop and chirp to alert an edge detection
+//     Motors(0,0);
 
-    // Back up
-    Motors(-50,-50);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    Motors(0,0);
+//     // Back up
+//     Motors(-50,-50);
+//     vTaskDelay(1000 / portTICK_PERIOD_MS);
+//     Motors(0,0);
 
-    // Turn
-    if (RightFrontEdgeDetected(edge)) {
-        Motors(50, 0);
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-    } else if (LeftFrontEdgeDetected(edge)) {
-        Motors(50, 0);
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-    }
+//     // Turn
+//     if (RightFrontEdgeDetected(edge)) {
+//         Motors(50, 0);
+//         vTaskDelay(500 / portTICK_PERIOD_MS);
+//     } else if (LeftFrontEdgeDetected(edge)) {
+//         Motors(50, 0);
+//         vTaskDelay(500 / portTICK_PERIOD_MS);
+//     }
     
 
-    // Continue forward
-    Motors(50,50);
+//     // Continue forward
+//     Motors(50,50);
 
-    vTaskSuspend(xSpinHandle);
-    vTaskResume(xSensingHandle);
-  }
-}
+//     vTaskSuspend(xAvoidObstacleHandle);
+//     // vTaskResume(xSensingHandle);
+//   }
+// }
