@@ -5,6 +5,7 @@ Lab4
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
+
 void TaskDriveForwardController(void *pvParameters);
 void TaskTurnController(void *pvParameters);
 void TaskSensing(void *pvParameters);
@@ -34,6 +35,7 @@ int turnAdjustment = 0;
 
 int rightTurnAngle = 71;
 int leftTurnAngle = -67;
+bool turnComplete = false;
 // bool turningRight = true;
 // int turnAngle = rightTurnAngle;
 
@@ -42,7 +44,7 @@ int numTurns;
 float Kp = 1;
 float Ki = 1;
 float Kd = 1;
-bool newManueverDetected;
+// bool newManueverDetected;
 
 char edge;
 
@@ -74,13 +76,13 @@ void setup(){
   ,  3 
   ,  &xNavigateMazeHandle );
 
-  // xTaskCreate(
-  // TaskController
-  // ,  (const portCHAR *)"Drive in direction of intended heading"
-  // ,  128 
-  // ,  NULL
-  // ,  2 
-  // ,  &xControllerHandle );
+  xTaskCreate(
+  TaskController
+  ,  (const portCHAR *)"Drive in direction of intended heading"
+  ,  128 
+  ,  NULL
+  ,  2 
+  ,  &xControllerHandle );
 
   xTaskCreate(
   TaskSensing
@@ -103,97 +105,111 @@ void TaskNavigateMaze(void *pvParameters) {
   bool drivingStraight = true;
   unsigned long startTime = millis();
   // int drivingStraightTime = 5000;
+  Manuever currentManuever = manuever;
   int backingupTimeLimit = 1000;
   unsigned long time = millis() - startTime;
   Serial.println("NavigateMaze");
 
   for(;;) {
     // Serial.println("start" + time);
+    Serial.print("manuever is ");
+    Serial.println(manuever);
 
     time = millis() - startTime;
+    // Serial.println("error at start of for loop in guidance = " + error);
 
     // Logic for when to change state
     switch (manuever)
     {
-    case DriveStraight:
-      if(FrontEdgeDetected(edge)) {
-        manuever = Backup;
-        newManueverDetected = true;
-      }
-      break;
-    case Backup:
-      bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
-      if(timeLimitReached && RightFrontEdgeDetected(edge)) {
-        manuever = TurningLeft;
-        edge = 0x0;
-        newManueverDetected = true;
-      } 
-      else if(timeLimitReached && LeftFrontEdgeDetected(edge)) {
-        manuever = TurningRight;
-        edge = 0x0;
-        newManueverDetected = true;
-      }
-      break;
-    case TurningRight:
-      if(error == 0) {
-        manuever = DriveStraight;
-        newManueverDetected = true;
-      }
-      break;
-    case TurningLeft:
-      if(error == 0) {
-        manuever = DriveStraight;
-        newManueverDetected = true;
-      }
-      break;
-    default:
-      break;
+      case DriveStraight:
+        if(FrontEdgeDetected(edge)) {
+          manuever = Backup;
+          // newManueverDetected = true;
+        }
+        break;
+      case Backup:
+        bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+        if(timeLimitReached && RightFrontEdgeDetected(edge)) {
+          manuever = TurningLeft;
+          edge = 0x0;
+          // newManueverDetected = true;
+          turnComplete = false;
+        } 
+        else if(timeLimitReached && LeftFrontEdgeDetected(edge)) {
+          manuever = TurningRight;
+          edge = 0x0;
+          // newManueverDetected = true;
+          turnComplete = false;
+        }
+        break;
+      case TurningRight:
+        Serial.println("make this make sense");
+        Serial.println("im currently turning right and the errror is " + error);
+        if(error == 0) {
+          Serial.println("the error is 0 in our guidance function!");
+          manuever = DriveStraight;
+          // newManueverDetected = true;
+        }
+        break;
+      case TurningLeft:
+        if(error == 0) {
+          manuever = DriveStraight;
+          // newManueverDetected = true;
+        }
+        break;
+      default:
+        break;
     }
 
     // Logic for how to change state
-    if(newManueverDetected) {
-          switch (manuever)
-          {
-            case DriveStraight:
-              Serial.println("manuever is now DriveStraight");
-              intendedHeading = PresentHeading();
-              Kp = 1;
-              Ki = 1;
-              Kd = 1;
-              baseSpeed = 30;
-              turnAdjustment = 0;
-              break;
-            case Backup:
-              Serial.println("manuever is now Backup");
-              intendedHeading = PresentHeading();
-              Kp = 1;
-              Ki = 1;
-              Kd = 1;
-              baseSpeed = -30;
-              turnAdjustment = 0;
-              startTime = millis();
-              break;
-            case TurningRight:
-              Serial.println("manuever is now TurningRight");
-              intendedHeading = PresentHeading() + (rightTurnAngle / 2);
-              Kp = 0.4;
-              Ki = 0;
-              Kd = 1;
-              baseSpeed = 15;
-              turnAdjustment = baseSpeed;
-              break;
-            case TurningLeft:
-              Serial.println("manuever is now TurningLeft");
-              intendedHeading = PresentHeading() + (leftTurnAngle / 2);
-              Kp = 0.4;
-              Ki = 0;
-              Kd = 1;
-              baseSpeed = 15;
-              turnAdjustment = baseSpeed;
-              break;
-            default:
-              break;
-          }
+    if(currentManuever != manuever) {
+      currentManuever = manuever;
+      switch (manuever)
+      {
+        case DriveStraight:
+          Serial.println("manuever is now DriveStraight");
+          intendedHeading = PresentHeading();
+          Kp = 1;
+          Ki = 1;
+          Kd = 1;
+          baseSpeed = 30;
+          turnAdjustment = 0;
+          // error = 0;
+          break;
+        case Backup:
+          Serial.println("manuever is now Backup");
+          intendedHeading = PresentHeading();
+          Kp = 1;
+          Ki = 1;
+          Kd = 1;
+          baseSpeed = -30;
+          turnAdjustment = 0;
+          // error = 0;
+          startTime = millis();
+          break;
+        case TurningRight:
+          Serial.println("manuever is now TurningRight");
+          intendedHeading = PresentHeading() + (rightTurnAngle / 2);
+          Kp = 0.4;
+          Ki = 0;
+          Kd = 1;
+          baseSpeed = 15;
+          // error = 0;
+          turnAdjustment = baseSpeed;
+          break;
+        case TurningLeft:
+          Serial.println("manuever is now TurningLeft");
+          intendedHeading = PresentHeading() + (leftTurnAngle / 2);
+          Kp = 0.4;
+          Ki = 0;
+          Kd = 1;
+          baseSpeed = 15;
+          // error = 0;
+          turnAdjustment = baseSpeed;
+          break;
+        default:
+          break;
+      }
     }
 
     vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
@@ -206,29 +222,35 @@ void TaskNavigateMaze(void *pvParameters) {
 void TaskController(void *pvParameters) {
   int P, I = 0, D = 0;
   int currentHeading;
-  int error = 0;
+  // int error = 0;
   int lastError = 0;
   int speedLeft = 50;
   int speedRight = 50;
+  Manuever currentManuever;
 
   int u;
 
   for(;;) {
 
-    if(newManueverDetected) {
+    if(currentManuever != manuever) {
+      currentManuever = manuever;
       OffEyes();
-      error = 0;
+      // error = 0;
       lastError = 0;
       P = 0;
       I = 0;
       D = 0;
-      newManueverDetected = false;
+      // newManueverDetected = false;
     }
 
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
     error = intendedHeading - currentHeading;
+    // if(error == 0) {
+    //   Serial.println("error is 0 in the controller task!");
+
+    // }
 
     P = error;
     I = I + error;
@@ -252,13 +274,14 @@ void TaskController(void *pvParameters) {
       OffEyes();
       speedLeft = max(baseSpeed - motorBias - turnAdjustment, 0);
       speedRight = max(baseSpeed - turnAdjustment, 0);
+      // turnComplete = true;
     }
 
     lastError = error;
 
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
-    Motors(speedLeft, speedRight);
+    // Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
 }
