@@ -1,4 +1,3 @@
-#line 1 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\RingoHardware.h"
 /*
 
 Ringo Robot:  RingoHardware  Rev01.02  12/2015
