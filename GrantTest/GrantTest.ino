@@ -8,14 +8,14 @@ Grant Testing Framework
 void TestDriver(void *pvParameters);
 TaskHandle_t xMasterHandle;
 unsigned long startTime = 0, endTime = 0, wcet = 0;
-#define ITERATIONS 10
+#define ITERATIONS 50
 /***** END TEST DRIVER GLOBALS ******/
 
 /***** TASK-UNDER-TEST GLOBALS ******/
 void TaskSensing(void *pvParameters);
 TaskHandle_t xSensingHandle, xSpinHandle;
 char edge;
-int edgeDetectorPeriod = 100;
+int edgeDetectorPeriod = 1000;
 /***** END TASK-UNDER-TEST GLOBALS ******/
 
 void setup(){
@@ -31,6 +31,7 @@ void setup(){
   // Setup Navigation
   delay(1000);
   NavigationBegin();
+  Serial.begin(57600);
   /*** End Ringo Init  ***/
   
   // Test Driver Task
@@ -60,33 +61,38 @@ void loop(){}
 
 void TestDriver(void *pvParameters)
 {
-  for(int i=0; i<ITERATIONS; i++) {
-    vTaskResume(xSensingHandle);
-    updateWCET();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
+  vTaskResume(xSensingHandle);
 
-  Serial.print("Task Under Test WCET: ");
+  // Serial.print("Task Under Test Final WCET: ");
   Serial.println(wcet);
 }
 
 void TaskSensing(void *pvParameters) {
-  startTime = micros();
-
   TickType_t xLastWakeTime;
   xLastWakeTime = xTaskGetTickCount();
-  edge = LookForEdge();
-  if(FrontEdgeDetected(edge))
-  {
-    // Handle right front edge detected
-    vTaskResume(xSpinHandle);
-    // vTaskSuspend(xSensingHandle);
+
+  for(int i=0; i<ITERATIONS; i++) {
+    startTime = micros();
+
+    edge = LookForEdge();
+    if(FrontEdgeDetected(edge))
+    {
+      // Handle right front edge detected
+      // vTaskResume(xSpinHandle);
+      // vTaskSuspend(xSensingHandle);
+      delayMicroseconds(2);
+    }
+
+    endTime = micros();
+    updateWCET();
+    vTaskDelay( edgeDetectorPeriod / portTICK_PERIOD_MS);
   }
 
-  endTime = micros();
+  
   vTaskSuspend(xSensingHandle);
 }
 
 void updateWCET() {
+  // Serial.println("Updating WCET");
   wcet = max(endTime - startTime, wcet);
 }
