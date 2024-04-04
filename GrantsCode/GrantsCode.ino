@@ -20,8 +20,8 @@ TaskHandle_t xSensingHandle;
 TaskHandle_t xNavigateMazeHandle;
 
 float guidancePeriod = 200;
-float controllerPeriod = 100;
-int edgeDetectorPeriod = 50;
+float controllerPeriod = 150;
+int edgeDetectorPeriod = 100;
 
 int intendedHeading;
 int error = 0;
@@ -109,49 +109,66 @@ void TaskNavigateMaze(void *pvParameters) {
   int backingupTimeLimit = 1000;
   unsigned long time = millis() - startTime;
   Serial.println("NavigateMaze");
+  char lastEdgeSeen = 0x0;
 
   for(;;) {
     // Serial.println("start" + time);
-    Serial.print("manuever is ");
-    Serial.println(manuever);
+    // Serial.print("manuever is ");
+    // Serial.println(manuever);
 
     time = millis() - startTime;
+    SetPixelRGB(0, 0, 0 ,0);
+    // vTaskDelay(10)
     // Serial.println("error at start of for loop in guidance = " + error);
+
 
     // Logic for when to change state
     switch (manuever)
     {
       case DriveStraight:
+        SetPixelRGB(0, 0, 0, 100);
+        // Serial.println("driving straight part one....");
         if(FrontEdgeDetected(edge)) {
           manuever = Backup;
+          lastEdgeSeen = edge;
+          startTime = millis();
           // newManueverDetected = true;
         }
         break;
       case Backup:
+        SetPixelRGB(0, 0, 100, 0);
+        // Serial.println("backing up part one....");
+        // Serial.println(time);
         bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
-        if(timeLimitReached && RightFrontEdgeDetected(edge)) {
+        if(timeLimitReached) {
+          // Serial.println("time limit reached");
+          Serial.println(lastEdgeSeen, HEX);
+        }
+        if(timeLimitReached && RightFrontEdgeDetected(lastEdgeSeen)) {
+          Serial.println("right edge");
           manuever = TurningLeft;
-          edge = 0x0;
+          lastEdgeSeen = 0x0;
           // newManueverDetected = true;
-          turnComplete = false;
+          // turnComplete = false;
         } 
-        else if(timeLimitReached && LeftFrontEdgeDetected(edge)) {
+        else if(timeLimitReached && LeftFrontEdgeDetected(lastEdgeSeen)) {
           manuever = TurningRight;
-          edge = 0x0;
+          lastEdgeSeen = 0x0;
+          // startTime = millis();
           // newManueverDetected = true;
-          turnComplete = false;
+          // turnComplete = false;
         }
         break;
       case TurningRight:
-        Serial.println("make this make sense");
-        Serial.println("im currently turning right and the errror is " + error);
+        SetPixelRGB(0, 100, 0, 0);
         if(error == 0) {
-          Serial.println("the error is 0 in our guidance function!");
           manuever = DriveStraight;
           // newManueverDetected = true;
         }
         break;
       case TurningLeft:
+        SetPixelRGB(0, 100, 100, 0);
+        // Serial.println("turning left part one...");
         if(error == 0) {
           manuever = DriveStraight;
           // newManueverDetected = true;
@@ -185,7 +202,6 @@ void TaskNavigateMaze(void *pvParameters) {
           baseSpeed = -30;
           turnAdjustment = 0;
           // error = 0;
-          startTime = millis();
           break;
         case TurningRight:
           Serial.println("manuever is now TurningRight");

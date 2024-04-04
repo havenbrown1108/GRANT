@@ -7,6 +7,7 @@ Lab4
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
+
 void TaskDriveForwardController(void *pvParameters);
 void TaskTurnController(void *pvParameters);
 void TaskSensing(void *pvParameters);
@@ -21,8 +22,8 @@ TaskHandle_t xSensingHandle;
 TaskHandle_t xNavigateMazeHandle;
 
 float guidancePeriod = 200;
-float controllerPeriod = 100;
-int edgeDetectorPeriod = 50;
+float controllerPeriod = 150;
+int edgeDetectorPeriod = 100;
 
 int intendedHeading;
 int error = 0;
@@ -53,13 +54,13 @@ enum Manuever { DriveStraight, Backup, TurningRight, TurningLeft};
 Manuever manuever;
 
 
-#line 54 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+#line 55 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
 void setup();
-#line 101 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+#line 102 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
 void loop();
-#line 103 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+#line 104 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
 void TaskNavigateMaze(void *pvParameters);
-#line 219 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+#line 238 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
 void TaskController(void *pvParameters);
 #line 30 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\FunStuff.ino"
 void PlayStartChirp(void);
@@ -315,7 +316,7 @@ void ModulateIR(unsigned int Frequency, unsigned int OnTime);
 void PlayChirpIR(unsigned int Frequency, unsigned int OnTime);
 #line 1120 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\RingoHardware.ino"
 char CheckMenuButton(void);
-#line 54 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+#line 55 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
   SetAllPixelsRGB(0, 0, 0);
@@ -373,54 +374,73 @@ void TaskNavigateMaze(void *pvParameters) {
   int backingupTimeLimit = 1000;
   unsigned long time = millis() - startTime;
   Serial.println("NavigateMaze");
+  char lastEdgeSeen = 0x0;
 
   for(;;) {
     // Serial.println("start" + time);
+    // Serial.print("manuever is ");
+    // Serial.println(manuever);
 
     time = millis() - startTime;
+    SetPixelRGB(0, 0, 0 ,0);
+    // vTaskDelay(10)
     // Serial.println("error at start of for loop in guidance = " + error);
+
 
     // Logic for when to change state
     switch (manuever)
     {
-    case DriveStraight:
-      if(FrontEdgeDetected(edge)) {
-        manuever = Backup;
-        // newManueverDetected = true;
-      }
-      break;
-    case Backup:
-      bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
-      if(timeLimitReached && RightFrontEdgeDetected(edge)) {
-        manuever = TurningLeft;
-        edge = 0x0;
-        // newManueverDetected = true;
-        turnComplete = false;
-      } 
-      else if(timeLimitReached && LeftFrontEdgeDetected(edge)) {
-        manuever = TurningRight;
-        edge = 0x0;
-        // newManueverDetected = true;
-        turnComplete = false;
-      }
-      break;
-    case TurningRight:
-      Serial.println("make this make sense");
-      Serial.println("im currently turning right and the errror is " + error);
-      if(error == 0) {
-        Serial.println("the error is 0 in our guidance function!");
-        manuever = DriveStraight;
-        // newManueverDetected = true;
-      }
-      break;
-    case TurningLeft:
-      if(error == 0) {
-        manuever = DriveStraight;
-        // newManueverDetected = true;
-      }
-      break;
-    default:
-      break;
+      case DriveStraight:
+        SetPixelRGB(0, 0, 0, 100);
+        // Serial.println("driving straight part one....");
+        if(FrontEdgeDetected(edge)) {
+          manuever = Backup;
+          lastEdgeSeen = edge;
+          startTime = millis();
+          // newManueverDetected = true;
+        }
+        break;
+      case Backup:
+        SetPixelRGB(0, 0, 100, 0);
+        // Serial.println("backing up part one....");
+        // Serial.println(time);
+        bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+        if(timeLimitReached) {
+          // Serial.println("time limit reached");
+          Serial.println(lastEdgeSeen, HEX);
+        }
+        if(timeLimitReached && RightFrontEdgeDetected(lastEdgeSeen)) {
+          Serial.println("right edge");
+          manuever = TurningLeft;
+          lastEdgeSeen = 0x0;
+          // newManueverDetected = true;
+          // turnComplete = false;
+        } 
+        else if(timeLimitReached && LeftFrontEdgeDetected(lastEdgeSeen)) {
+          manuever = TurningRight;
+          lastEdgeSeen = 0x0;
+          // startTime = millis();
+          // newManueverDetected = true;
+          // turnComplete = false;
+        }
+        break;
+      case TurningRight:
+        SetPixelRGB(0, 100, 0, 0);
+        if(error == 0) {
+          manuever = DriveStraight;
+          // newManueverDetected = true;
+        }
+        break;
+      case TurningLeft:
+        SetPixelRGB(0, 100, 100, 0);
+        // Serial.println("turning left part one...");
+        if(error == 0) {
+          manuever = DriveStraight;
+          // newManueverDetected = true;
+        }
+        break;
+      default:
+        break;
     }
 
     // Logic for how to change state
@@ -447,7 +467,6 @@ void TaskNavigateMaze(void *pvParameters) {
           baseSpeed = -30;
           turnAdjustment = 0;
           // error = 0;
-          startTime = millis();
           break;
         case TurningRight:
           Serial.println("manuever is now TurningRight");

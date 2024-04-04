@@ -10,6 +10,7 @@ Lab4
 # 6 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 2
 # 7 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 2
 
+
 void TaskDriveForwardController(void *pvParameters);
 void TaskTurnController(void *pvParameters);
 void TaskSensing(void *pvParameters);
@@ -24,8 +25,8 @@ TaskHandle_t xSensingHandle;
 TaskHandle_t xNavigateMazeHandle;
 
 float guidancePeriod = 200;
-float controllerPeriod = 100;
-int edgeDetectorPeriod = 50;
+float controllerPeriod = 150;
+int edgeDetectorPeriod = 100;
 
 int intendedHeading;
 int error = 0;
@@ -77,10 +78,10 @@ void setup(){
   , (const char *)"maze guidance task"
   , 128
   , 
-# 74 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3 4
+# 75 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3 4
     __null
   
-# 75 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 76 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
  , 3
   , &xNavigateMazeHandle );
 
@@ -89,10 +90,10 @@ void setup(){
   , (const char *)"Drive in direction of intended heading"
   , 128
   , 
-# 82 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3 4
+# 83 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3 4
     __null
   
-# 83 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 84 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
  , 2
   , &xControllerHandle );
 
@@ -101,10 +102,10 @@ void setup(){
   , (const char *)"Check for edges"
   , 128
   , 
-# 90 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3 4
+# 91 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3 4
     __null
   
-# 91 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 92 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
  , 3
   , &xSensingHandle );
 
@@ -125,54 +126,73 @@ void TaskNavigateMaze(void *pvParameters) {
   int backingupTimeLimit = 1000;
   unsigned long time = millis() - startTime;
   Serial.println("NavigateMaze");
+  char lastEdgeSeen = 0x0;
 
   for(;;) {
     // Serial.println("start" + time);
+    // Serial.print("manuever is ");
+    // Serial.println(manuever);
 
     time = millis() - startTime;
+    SetPixelRGB(0, 0, 0 ,0);
+    // vTaskDelay(10)
     // Serial.println("error at start of for loop in guidance = " + error);
+
 
     // Logic for when to change state
     switch (manuever)
     {
-    case DriveStraight:
-      if(((edge)&(0x01 | 0x02 | 0x10 | 0x20))) {
-        manuever = Backup;
-        // newManueverDetected = true;
-      }
-      break;
-    case Backup:
-      bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
-      if(timeLimitReached && ((edge)&(0x01 | 0x02))) {
-        manuever = TurningLeft;
-        edge = 0x0;
-        // newManueverDetected = true;
-        turnComplete = false;
-      }
-      else if(timeLimitReached && ((edge)&(0x10 | 0x20))) {
-        manuever = TurningRight;
-        edge = 0x0;
-        // newManueverDetected = true;
-        turnComplete = false;
-      }
-      break;
-    case TurningRight:
-      Serial.println("make this make sense");
-      Serial.println("im currently turning right and the errror is " + error);
-      if(error == 0) {
-        Serial.println("the error is 0 in our guidance function!");
-        manuever = DriveStraight;
-        // newManueverDetected = true;
-      }
-      break;
-    case TurningLeft:
-      if(error == 0) {
-        manuever = DriveStraight;
-        // newManueverDetected = true;
-      }
-      break;
-    default:
-      break;
+      case DriveStraight:
+        SetPixelRGB(0, 0, 0, 100);
+        // Serial.println("driving straight part one....");
+        if(((edge)&(0x01 | 0x02 | 0x10 | 0x20))) {
+          manuever = Backup;
+          lastEdgeSeen = edge;
+          startTime = millis();
+          // newManueverDetected = true;
+        }
+        break;
+      case Backup:
+        SetPixelRGB(0, 0, 100, 0);
+        // Serial.println("backing up part one....");
+        // Serial.println(time);
+        bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+        if(timeLimitReached) {
+          // Serial.println("time limit reached");
+          Serial.println(lastEdgeSeen, 16);
+        }
+        if(timeLimitReached && ((lastEdgeSeen)&(0x01 | 0x02))) {
+          Serial.println("right edge");
+          manuever = TurningLeft;
+          lastEdgeSeen = 0x0;
+          // newManueverDetected = true;
+          // turnComplete = false;
+        }
+        else if(timeLimitReached && ((lastEdgeSeen)&(0x10 | 0x20))) {
+          manuever = TurningRight;
+          lastEdgeSeen = 0x0;
+          // startTime = millis();
+          // newManueverDetected = true;
+          // turnComplete = false;
+        }
+        break;
+      case TurningRight:
+        SetPixelRGB(0, 100, 0, 0);
+        if(error == 0) {
+          manuever = DriveStraight;
+          // newManueverDetected = true;
+        }
+        break;
+      case TurningLeft:
+        SetPixelRGB(0, 100, 100, 0);
+        // Serial.println("turning left part one...");
+        if(error == 0) {
+          manuever = DriveStraight;
+          // newManueverDetected = true;
+        }
+        break;
+      default:
+        break;
     }
 
     // Logic for how to change state
@@ -199,7 +219,6 @@ void TaskNavigateMaze(void *pvParameters) {
           baseSpeed = -30;
           turnAdjustment = 0;
           // error = 0;
-          startTime = millis();
           break;
         case TurningRight:
           Serial.println("manuever is now TurningRight");
@@ -227,13 +246,13 @@ void TaskNavigateMaze(void *pvParameters) {
     }
 
     vTaskDelay(guidancePeriod / ( (TickType_t) 
-# 212 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
+# 231 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
                                (1 << (0 
-# 212 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 231 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
                                /* portUSE_WDTO to use the Watchdog Timer for xTaskIncrementTick*/ + 4
-# 212 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
+# 231 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
                                )) 
-# 212 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 231 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
                                ) /* Inaccurately assuming 128 kHz Watchdog Timer.*/);
   }
 
@@ -305,13 +324,13 @@ void TaskController(void *pvParameters) {
     speedRight = ((speedRight)<(maxSpeed)?(speedRight):(maxSpeed));
     // Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / ( (TickType_t) 
-# 282 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
+# 301 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
                                  (1 << (0 
-# 282 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 301 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
                                  /* portUSE_WDTO to use the Watchdog Timer for xTaskIncrementTick*/ + 4
-# 282 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
+# 301 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
                                  )) 
-# 282 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 301 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
                                  ) /* Inaccurately assuming 128 kHz Watchdog Timer.*/);
   }
 }
@@ -326,13 +345,13 @@ void TaskSensing(void *pvParameters) {
         edge = LookForEdge();
 
         vTaskDelay( edgeDetectorPeriod / ( (TickType_t) 
-# 295 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
+# 314 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
                                         (1 << (0 
-# 295 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 314 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
                                         /* portUSE_WDTO to use the Watchdog Timer for xTaskIncrementTick*/ + 4
-# 295 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
+# 314 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino" 3
                                         )) 
-# 295 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
+# 314 "C:\\Users\\hbrown28\\Documents\\Arduino\\GrantsCode\\GrantsCode.ino"
                                         ) /* Inaccurately assuming 128 kHz Watchdog Timer.*/);
     }
 }
