@@ -204,6 +204,7 @@ void TaskNavigateMaze(void *pvParameters) {
           // error = 0;
           break;
         case TurningRight:
+          SetPixelRGB(0, 255,20,147);
           Serial.println("manuever is now TurningRight");
           intendedHeading = PresentHeading() + (rightTurnAngle / 2);
           Kp = 0.4;
