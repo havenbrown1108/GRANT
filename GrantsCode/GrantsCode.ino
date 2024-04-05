@@ -63,6 +63,7 @@ void setup(){
   // Setup Navigation
   delay(500);
   NavigationBegin();
+  ResumeNavigation();
 
   ResetLookAtEdge();
 
