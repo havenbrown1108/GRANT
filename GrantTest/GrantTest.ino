@@ -15,7 +15,7 @@ unsigned long startTime = 0, endTime = 0, wcet = 0;
 void TaskSensing(void *pvParameters);
 TaskHandle_t xSensingHandle, xSpinHandle;
 char edge;
-int edgeDetectorPeriod = 1000;
+int sensingPeriod = 1000;
 /***** END TASK-UNDER-TEST GLOBALS ******/
 
 void setup(){
@@ -85,7 +85,7 @@ void TaskSensing(void *pvParameters) {
 
     endTime = micros();
     updateWCET();
-    vTaskDelay( edgeDetectorPeriod / portTICK_PERIOD_MS);
+    vTaskDelay( sensingPeriod / portTICK_PERIOD_MS);
   }
 
   

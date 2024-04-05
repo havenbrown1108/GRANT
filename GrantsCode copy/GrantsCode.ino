@@ -6,8 +6,8 @@ Lab4
 #include "RingoHardware.h"
 
 
-void TaskNavigateMaze(void *pvParameters);
-void TaskController(void *pvParameters);
+void TaskDriveForwardController(void *pvParameters);
+void TaskTurnController(void *pvParameters);
 void TaskSensing(void *pvParameters);
 
 
@@ -19,7 +19,7 @@ TaskHandle_t xSensingHandle;
 // TaskHandle_t xAvoidObstacleHandle;
 TaskHandle_t xNavigateMazeHandle;
 
-float guidancePeriod = 300;
+float guidancePeriod = 200;
 float controllerPeriod = 150;
 int sensingPeriod = 100;
 
@@ -29,22 +29,24 @@ int error = 0;
 
 
 int baseSpeed = 30;
-int maxSpeed = 50;
+int maxSpeed = 100;
 int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
 int turnAdjustment = 0;
 
 int rightTurnAngle = 71;
 int leftTurnAngle = -67;
 bool turnComplete = false;
+// bool turningRight = true;
+// int turnAngle = rightTurnAngle;
 
 int numTurns;
 
 float Kp = 1;
 float Ki = 1;
 float Kd = 1;
+// bool newManueverDetected;
 
-char lastEdge = 0x0;
-bool edgeDetected = false;
+char edge;
 
 enum Manuever { DriveStraight, Backup, TurningRight, TurningLeft};
 Manuever manuever;
@@ -61,7 +63,7 @@ void setup(){
   GetIRButton();
 
   // Setup Navigation
-  delay(500);
+  delay(1000);
   NavigationBegin();
 
   ResetLookAtEdge();
@@ -90,92 +92,99 @@ void setup(){
   ,  3 
   ,  &xSensingHandle );
 
-  // Serial.println("setup");
-  SetAllPixelsRGB(0,100,100);
+  edge = 0x0;
+  Serial.println("setup");
 
   intendedHeading = PresentHeading();
   manuever = DriveStraight;
-
-  // vTaskSuspend(xControllerHandle);
 }
 
 void loop(){}
 
 void TaskNavigateMaze(void *pvParameters) {
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
-
   bool drivingStraight = true;
   unsigned long startTime = millis();
+  // int drivingStraightTime = 5000;
   Manuever currentManuever = manuever;
   int backingupTimeLimit = 1000;
   unsigned long time = millis() - startTime;
-  SetAllPixelsRGB(0,0,0);
   Serial.println("NavigateMaze");
+  char lastEdgeSeen = 0x0;
 
   for(;;) {
-    time = millis() - startTime;
+    // Serial.println("start" + time);
+    // Serial.print("manuever is ");
+    // Serial.println(manuever);
 
-    SetPixelRGB(TAIL_TOP, 0, 0 ,0);
+    time = millis() - startTime;
+    SetPixelRGB(0, 0, 0 ,0);
+    // vTaskDelay(10)
+    // Serial.println("error at start of for loop in guidance = " + error);
+
+
     // Logic for when to change state
     switch (manuever)
     {
       case DriveStraight:
-        SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
-        if(edgeDetected) {
-          // Serial.println("Backup");
+        SetPixelRGB(0, 0, 0, 100);
+        // Serial.println("driving straight part one....");
+        if(FrontEdgeDetected(edge)) {
           manuever = Backup;
-          
+          lastEdgeSeen = edge;
           startTime = millis();
+          // newManueverDetected = true;
         }
-        // vTaskResume(xControllerHandle);
         break;
       case Backup:
-        SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
-        edgeDetected = false;
-        // Serial.println("Waiting");
-        vTaskDelay(backingupTimeLimit / portTICK_PERIOD_MS);
-        // Serial.println("Waited");
-        // Serial.println(lastEdgeSeen,HEX);
-        // Serial.println(LeftFrontEdgeDetected(lastEdgeSeen));
-        if(RightFrontEdgeDetected(lastEdge)) {
-          // Serial.println("right edge");
-          SetPixelRGB(BODY_TOP, 100, 0, 0);
-          manuever = TurningLeft;
-          lastEdge = 0x0;
-        } 
-        else if(LeftFrontEdgeDetected(lastEdge)) {
-          // Serial.println("right edge");
-          SetPixelRGB(BODY_TOP, 0, 0, 100);
-          manuever = TurningRight;
-          lastEdge = 0x0;
+        SetPixelRGB(0, 0, 100, 0);
+        // Serial.println("backing up part one....");
+        // Serial.println(time);
+        bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+        if(timeLimitReached) {
+          // Serial.println("time limit reached");
+          Serial.println(lastEdgeSeen, HEX);
         }
-        
+        if(timeLimitReached && RightFrontEdgeDetected(lastEdgeSeen)) {
+          Serial.println("right edge");
+          manuever = TurningLeft;
+          lastEdgeSeen = 0x0;
+          // newManueverDetected = true;
+          // turnComplete = false;
+        } 
+        else if(timeLimitReached && LeftFrontEdgeDetected(lastEdgeSeen)) {
+          manuever = TurningRight;
+          lastEdgeSeen = 0x0;
+          // startTime = millis();
+          // newManueverDetected = true;
+          // turnComplete = false;
+        }
         break;
       case TurningRight:
-        SetPixelRGB(TAIL_TOP, 100, 0, 0); // Red
+        SetPixelRGB(0, 100, 0, 0);
         if(error == 0) {
           manuever = DriveStraight;
+          // newManueverDetected = true;
         }
-        // vTaskResume(xControllerHandle);
         break;
       case TurningLeft:
-        SetPixelRGB(TAIL_TOP, 100, 100, 0); // Yellow
+        SetPixelRGB(0, 100, 100, 0);
+        // Serial.println("turning left part one...");
         if(error == 0) {
           manuever = DriveStraight;
+          // newManueverDetected = true;
         }
-        // vTaskResume(xControllerHandle);
         break;
       default:
         break;
     }
 
+    // Logic for how to change state
     if(currentManuever != manuever) {
       currentManuever = manuever;
       switch (manuever)
       {
         case DriveStraight:
-          // Serial.println("manuever is now DriveStraight");
+          Serial.println("manuever is now DriveStraight");
           intendedHeading = PresentHeading();
           Kp = 1;
           Ki = 1;
@@ -185,7 +194,7 @@ void TaskNavigateMaze(void *pvParameters) {
           // error = 0;
           break;
         case Backup:
-          // Serial.println("manuever is now Backup");
+          Serial.println("manuever is now Backup");
           intendedHeading = PresentHeading();
           Kp = 1;
           Ki = 1;
@@ -195,7 +204,7 @@ void TaskNavigateMaze(void *pvParameters) {
           // error = 0;
           break;
         case TurningRight:
-          // Serial.println("manuever is now TurningRight");
+          Serial.println("manuever is now TurningRight");
           intendedHeading = PresentHeading() + (rightTurnAngle / 2);
           Kp = 0.4;
           Ki = 0;
@@ -205,7 +214,7 @@ void TaskNavigateMaze(void *pvParameters) {
           turnAdjustment = baseSpeed;
           break;
         case TurningLeft:
-          // Serial.println("manuever is now TurningLeft");
+          Serial.println("manuever is now TurningLeft");
           intendedHeading = PresentHeading() + (leftTurnAngle / 2);
           Kp = 0.4;
           Ki = 0;
@@ -219,15 +228,14 @@ void TaskNavigateMaze(void *pvParameters) {
       }
     }
 
-    vTaskDelayUntil(&xLastWakeTime, guidancePeriod);
+    vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
 
 }
 
-void TaskController(void *pvParameters) {
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
 
+
+void TaskController(void *pvParameters) {
   int P, I = 0, D = 0;
   int currentHeading;
   // int error = 0;
@@ -239,7 +247,7 @@ void TaskController(void *pvParameters) {
   int u;
 
   for(;;) {
-    // Logic for how to change state
+
     if(currentManuever != manuever) {
       currentManuever = manuever;
       OffEyes();
@@ -250,13 +258,6 @@ void TaskController(void *pvParameters) {
       D = 0;
       // newManueverDetected = false;
     }
-
-    if(NavigationOn){
-      CalibrateNavigationSensors();
-      ResumeNavigation();
-    }
-    else
-      NavigationBegin();  
 
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
@@ -275,13 +276,13 @@ void TaskController(void *pvParameters) {
   
     // The Ringo is veering right, so we need to turn a bit to the left
     if(error < 0) {
-      OnEyes(100,0,0); // Red
+      OnEyes(100,0,0);
       speedRight = -u + baseSpeed + motorBias;
       speedLeft = baseSpeed - turnAdjustment;
     }
     // Vice versa
     else if(error > 0) {
-      OnEyes(0,100,0); // Green
+      OnEyes(0,100,0);
       speedLeft = u + baseSpeed;
       speedRight = baseSpeed - turnAdjustment;
     }
@@ -297,25 +298,50 @@ void TaskController(void *pvParameters) {
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
     // Motors(speedLeft, speedRight);
-    // vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
-    vTaskDelayUntil(&xLastWakeTime, controllerPeriod);
+    vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
 }
 
 void TaskSensing(void *pvParameters) {
-    TickType_t xLastWakeTime;
-    xLastWakeTime = xTaskGetTickCount();
-    char edge = 0x0;
-    // Serial.println("sensing task");
+    // TickType_t xLastWakeTime;
+    // xLastWakeTime = xTaskGetTickCount();
+    Serial.println("sensing task");
+
     for(;;)
     {
         edge = LookForEdge();
-        if(FrontEdgeDetected(edge)) {
-            // Serial.println("Edge Detected");
-            lastEdge = edge;
-            edgeDetected = true;
-            // Serial.println(lastEdge, HEX);
-        }
-        vTaskDelayUntil(&xLastWakeTime, sensingPeriod);
+
+        vTaskDelay( sensingPeriod / portTICK_PERIOD_MS);
     }
 }
+
+// This is an aperiodic task that spins the lil guy
+// void TaskAvoidObstacle(void *pvParameters)
+// {
+//   for(;;)
+//   {
+//     // Stop and chirp to alert an edge detection
+//     Motors(0,0);
+
+//     // Back up
+//     Motors(-50,-50);
+//     vTaskDelay(1000 / portTICK_PERIOD_MS);
+//     Motors(0,0);
+
+//     // Turn
+//     if (RightFrontEdgeDetected(edge)) {
+//         Motors(50, 0);
+//         vTaskDelay(500 / portTICK_PERIOD_MS);
+//     } else if (LeftFrontEdgeDetected(edge)) {
+//         Motors(50, 0);
+//         vTaskDelay(500 / portTICK_PERIOD_MS);
+//     }
+    
+
+//     // Continue forward
+//     Motors(50,50);
+
+//     vTaskSuspend(xAvoidObstacleHandle);
+//     // vTaskResume(xSensingHandle);
+//   }
+// }
