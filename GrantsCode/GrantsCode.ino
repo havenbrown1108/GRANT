@@ -21,7 +21,7 @@ TaskHandle_t xNavigateMazeHandle;
 
 float guidancePeriod = 300;
 float controllerPeriod = 150;
-int sensingPeriod = 100;
+int sensingPeriod = 50;
 
 int intendedHeading;
 int error = 0;
@@ -29,7 +29,7 @@ int error = 0;
 
 
 int baseSpeed = 30;
-int maxSpeed = 50;
+int maxSpeed = 100;
 int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
 int turnAdjustment = 0;
 
@@ -44,6 +44,7 @@ float Ki = 1;
 float Kd = 1;
 
 char lastEdge = 0x0;
+char edge;
 bool edgeDetected = false;
 
 enum Manuever { DriveStraight, Backup, TurningRight, TurningLeft};
@@ -72,7 +73,7 @@ void setup(){
   ,  (const portCHAR *)"maze guidance task"
   ,  128 
   ,  NULL
-  ,  3 
+  ,  1 
   ,  &xNavigateMazeHandle );
 
   xTaskCreate(
@@ -96,6 +97,7 @@ void setup(){
 
   intendedHeading = PresentHeading();
   manuever = DriveStraight;
+  edge = 0x0;
 
   // vTaskSuspend(xControllerHandle);
 }
@@ -109,7 +111,7 @@ void TaskNavigateMaze(void *pvParameters) {
   bool drivingStraight = true;
   unsigned long startTime = millis();
   Manuever currentManuever = manuever;
-  int backingupTimeLimit = 1000;
+  int backingupTimeLimit = 2000;
   unsigned long time = millis() - startTime;
   SetAllPixelsRGB(0,0,0);
   Serial.println("NavigateMaze");
@@ -117,110 +119,95 @@ void TaskNavigateMaze(void *pvParameters) {
   for(;;) {
     time = millis() - startTime;
 
-    SetPixelRGB(TAIL_TOP, 0, 0 ,0);
+    // SetPixelRGB(TAIL_TOP, 0, 0 ,0);
+    Serial.println(manuever);
+    Serial.println(error);
     // Logic for when to change state
-    switch (manuever)
-    {
-      case DriveStraight:
-        SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
-        if(edgeDetected) {
-          // Serial.println("Backup");
-          manuever = Backup;
-          
-          startTime = millis();
-        }
-        // vTaskResume(xControllerHandle);
-        break;
-      case Backup:
+
+    if (manuever == DriveStraight) {
+      SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
+      if(FrontEdgeDetected(edge)) {
+        manuever = Backup;
+        startTime = millis();
+      }
+    } else if (manuever == Backup) {
         SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
         edgeDetected = false;
-        // Serial.println("Waiting");
-        vTaskDelay(backingupTimeLimit / portTICK_PERIOD_MS);
-        // Serial.println("Waited");
-        // Serial.println(lastEdgeSeen,HEX);
-        // Serial.println(LeftFrontEdgeDetected(lastEdgeSeen));
-        if(RightFrontEdgeDetected(lastEdge)) {
-          // Serial.println("right edge");
-          SetPixelRGB(BODY_TOP, 100, 0, 0);
-          manuever = TurningLeft;
-          lastEdge = 0x0;
-        } 
-        else if(LeftFrontEdgeDetected(lastEdge)) {
-          // Serial.println("right edge");
-          SetPixelRGB(BODY_TOP, 0, 0, 100);
-          manuever = TurningRight;
-          lastEdge = 0x0;
+
+        bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+        if(timeLimitReached) {
+          if(RightFrontEdgeDetected(lastEdge)) {
+            manuever = TurningLeft;
+            lastEdge = 0x0;
+          } 
+          else if(LeftFrontEdgeDetected(lastEdge)) {
+            manuever = TurningRight;
+            lastEdge = 0x0;
+          }
         }
-        
-        break;
-      case TurningRight:
-        SetPixelRGB(TAIL_TOP, 100, 0, 0); // Red
+    } else if (manuever == TurningRight) {
+        Serial.println("right");
+        SetPixelRGB(TAIL_TOP, 100, 0, 100); 
         if(error == 0) {
           manuever = DriveStraight;
         }
-        // vTaskResume(xControllerHandle);
-        break;
-      case TurningLeft:
-        SetPixelRGB(TAIL_TOP, 100, 100, 0); // Yellow
+
+    } else if (manuever == TurningLeft) {
+        Serial.println("left");
+        SetPixelRGB(TAIL_TOP, 100, 100, 0); 
         if(error == 0) {
           manuever = DriveStraight;
         }
-        // vTaskResume(xControllerHandle);
-        break;
-      default:
-        break;
     }
+    // switch (manuever)
+    // {
+    //   case DriveStraight:
+        // SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
+        // if(FrontEdgeDetected(edge)) {
+        //   manuever = Backup;
+        //   startTime = millis();
+        // }
+        // break;
+    //   case Backup:
+    //     SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
+    //     edgeDetected = false;
 
-    if(currentManuever != manuever) {
-      currentManuever = manuever;
-      switch (manuever)
-      {
-        case DriveStraight:
-          // Serial.println("manuever is now DriveStraight");
-          intendedHeading = PresentHeading();
-          Kp = 1;
-          Ki = 1;
-          Kd = 1;
-          baseSpeed = 30;
-          turnAdjustment = 0;
-          // error = 0;
-          break;
-        case Backup:
-          // Serial.println("manuever is now Backup");
-          intendedHeading = PresentHeading();
-          Kp = 1;
-          Ki = 1;
-          Kd = 1;
-          baseSpeed = -30;
-          turnAdjustment = 0;
-          // error = 0;
-          break;
-        case TurningRight:
-          // Serial.println("manuever is now TurningRight");
-          intendedHeading = PresentHeading() + (rightTurnAngle / 2);
-          Kp = 0.4;
-          Ki = 0;
-          Kd = 1;
-          baseSpeed = 15;
-          // error = 0;
-          turnAdjustment = baseSpeed;
-          break;
-        case TurningLeft:
-          // Serial.println("manuever is now TurningLeft");
-          intendedHeading = PresentHeading() + (leftTurnAngle / 2);
-          Kp = 0.4;
-          Ki = 0;
-          Kd = 1;
-          baseSpeed = 15;
-          // error = 0;
-          turnAdjustment = baseSpeed;
-          break;
-        default:
-          break;
-      }
-    }
+    //     bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
+    //     if(timeLimitReached) {
+    //       if(RightFrontEdgeDetected(lastEdge)) {
+    //         manuever = TurningLeft;
+    //         lastEdge = 0x0;
+    //       } 
+    //       else if(LeftFrontEdgeDetected(lastEdge)) {
+    //         manuever = TurningRight;
+    //         lastEdge = 0x0;
+    //       }
+    //     }
+    //     break;
+    //   case TurningRight:
+    //     Serial.println("right");
+    //     SetPixelRGB(TAIL_TOP, 100, 0, 100); 
+    //     if(error == 0) {
+    //       manuever = DriveStraight;
+    //     }
+    //     break;
+    //   case TurningLeft:
+    //     Serial.println("left");
+    //     SetPixelRGB(TAIL_TOP, 100, 100, 0);
+    //     if(error == 0) {
+    //       manuever = DriveStraight;
+    //     }
+    //     break;
+    //   default:
+    //     SetAllPixelsRGB(100, 100, 100);
+    //     break;
+    // }
+    Serial.println("left switch statement");
 
-    vTaskDelayUntil(&xLastWakeTime, guidancePeriod);
+
+
+    // vTaskDelayUntil(&xLastWakeTime, guidancePeriod);
+    vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
 
 }
@@ -240,24 +227,77 @@ void TaskController(void *pvParameters) {
   int u;
 
   for(;;) {
-    // Logic for how to change state
     if(currentManuever != manuever) {
       currentManuever = manuever;
-      OffEyes();
+      switch (manuever)
+      {
+        case DriveStraight:
+          // Serial.println("manuever is now DriveStraight");
+          SetPixelRGB(BODY_TOP, 0, 0, 100);
+          intendedHeading = PresentHeading();
+          Kp = 1;
+          Ki = 1;
+          Kd = 1;
+          baseSpeed = 30;
+          turnAdjustment = 0;
+          // error = 0;
+          break;
+        case Backup:
+          // Serial.println("manuever is now Backup");
+          SetPixelRGB(BODY_TOP, 0, 100, 0);
+          intendedHeading = PresentHeading();
+          Kp = 1;
+          Ki = 1;
+          Kd = 1;
+          baseSpeed = -30;
+          turnAdjustment = 0;
+          // error = 0;
+          break;
+        case TurningRight:
+          // Serial.println("manuever is now TurningRight");
+          SetPixelRGB(BODY_TOP, 100, 0, 100);
+          intendedHeading = PresentHeading() + (rightTurnAngle / 3);
+          Kp = 0.4;
+          Ki = 0;
+          Kd = 1;
+          baseSpeed = 30;
+          // error = 0;
+          turnAdjustment = baseSpeed;
+          break;
+        case TurningLeft:
+          SetPixelRGB(BODY_TOP, 100, 100, 0);
+          // Serial.println("manuever is now TurningLeft");
+          intendedHeading = PresentHeading() + (leftTurnAngle / 3);
+          Kp = 0.4;
+          Ki = 0;
+          Kd = 1;
+          baseSpeed = 30;
+          // error = 0;
+          turnAdjustment = baseSpeed;
+          break;
+        default:
+          break;
+      }
+            OffEyes();
       // error = 0;
       lastError = 0;
       P = 0;
       I = 0;
       D = 0;
-      // newManueverDetected = false;
     }
+    // Logic for how to change state
+    // if(currentManuever != manuever) {
+    //   currentManuever = manuever;
 
-    if(NavigationOn){
-      CalibrateNavigationSensors();
-      ResumeNavigation();
-    }
-    else
-      NavigationBegin();  
+    //   // newManueverDetected = false;
+    // }
+
+    // if(NavigationOn){
+    //   CalibrateNavigationSensors();
+    //   ResumeNavigation();
+    // }
+    // else
+    //   NavigationBegin();  
 
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
@@ -278,18 +318,24 @@ void TaskController(void *pvParameters) {
     if(error < 0) {
       OnEyes(100,0,0); // Red
       speedRight = -u + baseSpeed + motorBias;
-      speedLeft = baseSpeed - turnAdjustment;
+      speedLeft = turnAdjustment != 0 ? -(-u + baseSpeed + motorBias) : baseSpeed - turnAdjustment;
     }
     // Vice versa
     else if(error > 0) {
       OnEyes(0,100,0); // Green
       speedLeft = u + baseSpeed;
-      speedRight = baseSpeed - turnAdjustment;
+      speedRight = turnAdjustment != 0 ? -(-u + baseSpeed + motorBias) : baseSpeed - turnAdjustment;
     }
     else {
       OffEyes();
-      speedLeft = max(baseSpeed - motorBias - turnAdjustment, 0);
-      speedRight = max(baseSpeed - turnAdjustment, 0);
+      if(currentManuever != Backup) {
+        speedLeft = max(baseSpeed - motorBias - turnAdjustment, 0);
+        speedRight = max(baseSpeed - turnAdjustment, 0);
+      }
+      else {
+        speedLeft = baseSpeed - motorBias;
+        speedRight = baseSpeed;
+      }
       // turnComplete = true;
     }
 
@@ -297,26 +343,32 @@ void TaskController(void *pvParameters) {
 
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
-    // Motors(speedLeft, speedRight);
-    // vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
-    vTaskDelayUntil(&xLastWakeTime, controllerPeriod);
+    // Serial.print(speedRight);
+    // Serial.println(speedLeft);
+    Motors(speedLeft, speedRight);
+    vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
+    // vTaskDelayUntil(&xLastWakeTime, controllerPeriod);
   }
 }
 
 void TaskSensing(void *pvParameters) {
     TickType_t xLastWakeTime;
     xLastWakeTime = xTaskGetTickCount();
-    char edge = 0x0;
+    // char edge = 0x0;
     // Serial.println("sensing task");
     for(;;)
     {
         edge = LookForEdge();
+        // Serial.print("edge ");
+        // Serial.println(edge, HEX);
         if(FrontEdgeDetected(edge)) {
             // Serial.println("Edge Detected");
             lastEdge = edge;
             edgeDetected = true;
-            // Serial.println(lastEdge, HEX);
+            OnEyes(100, 100, 0);
+            Serial.println(lastEdge, HEX);
         }
-        vTaskDelayUntil(&xLastWakeTime, sensingPeriod);
+        // vTaskDelayUntil(&xLastWakeTime, sensingPeriod);
+        vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
     }
 }
