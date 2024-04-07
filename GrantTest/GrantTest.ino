@@ -5,7 +5,7 @@ Grant Testing Framework
 #include "RingoHardware.h"
 
 /***** TEST DRIVER GLOBALS ******/
-#define ITERATIONS 50
+#define ITERATIONS 20
 void TestDriver(void *pvParameters);
 void updateWCET();
 TaskHandle_t xMasterHandle;
@@ -25,7 +25,7 @@ int baseSpeed = 30, maxSpeed = 100, motorBias = 5;
 int rightTurnAngle = 71, leftTurnAngle = -67;
 
 enum Manuever { DriveStraight, Backup, TurningLeft};
-Manuever manuever;
+Manuever manuever = Backup;
 /***** END TASK-UNDER-TEST GLOBALS ******/
 
 void setup(){
@@ -55,13 +55,14 @@ void setup(){
   );
 
   // Task-under-test
-  xTaskCreate(
-  TaskNavigateMaze
-  ,  (const portCHAR *)"maze guidance task"
-  ,  128 
-  ,  NULL
-  ,  3
-  ,  &xNavigateMazeHandle );
+  // xTaskCreate(
+  // TaskNavigateMaze
+  // ,  (const portCHAR *)"maze guidance task"
+  // ,  128 
+  // ,  NULL
+  // ,  3
+  // ,  &xNavigateMazeHandle );
+  // vTaskSuspend(xNavigateMazeHandle);
 
   xTaskCreate(
   TaskController
@@ -70,27 +71,35 @@ void setup(){
   ,  NULL
   ,  3
   ,  &xControllerHandle );
+  vTaskSuspend(xControllerHandle);
 
-  xTaskCreate(
-  TaskSensing
-  ,  (const portCHAR *)"Check for edges"
-  ,  128 
-  ,  NULL
-  ,  3 
-  ,  &xSensingHandle );
+  // xTaskCreate(
+  // TaskSensing
+  // ,  (const portCHAR *)"Check for edges"
+  // ,  128 
+  // ,  NULL
+  // ,  3 
+  // ,  &xSensingHandle );
+  // vTaskSuspend(xSensingHandle);
 
-  vTaskSuspend(xSensingHandle);
 }
 
 void loop(){}
 
 void TestDriver(void *pvParameters)
 {
-  vTaskResume(xNavigateMazeHandle);
-//   vTaskResume(xControllerHandle);
-//   vTaskResume(xSensingHandle);
+    for (;;){
+      // vTaskResume(xNavigateMazeHandle);
+        vTaskResume(xControllerHandle);
+      // vTaskResume(xSensingHandle);
+      Serial.println(wcet);
 
-  Serial.println(wcet);
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+  
+
+
+  
 }
 
 void TaskNavigateMaze(void *pvParameters) {
@@ -127,7 +136,7 @@ void TaskNavigateMaze(void *pvParameters) {
     }
 
     endTime = micros();
-    updateWCET();
+    wcet = max(endTime - startTime, wcet);
     vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
 
@@ -226,10 +235,10 @@ void TaskController(void *pvParameters) {
 
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
-    Motors(speedLeft, speedRight);
+    // Motors(speedLeft, speedRight);
 
     endTime = micros();
-    updateWCET();
+    wcet = max(endTime - startTime, wcet);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
 
@@ -237,9 +246,6 @@ void TaskController(void *pvParameters) {
 }
 
 void TaskSensing(void *pvParameters) {
-  TickType_t xLastWakeTime;
-  xLastWakeTime = xTaskGetTickCount();
-
   for(int i=0; i<ITERATIONS; i++) {
     startTime = micros();
 
@@ -253,15 +259,10 @@ void TaskSensing(void *pvParameters) {
     }
 
     endTime = micros();
-    updateWCET();
+    wcet = max(endTime - startTime, wcet);
     vTaskDelay( sensingPeriod / portTICK_PERIOD_MS);
   }
 
   
   vTaskSuspend(xSensingHandle);
-}
-
-void updateWCET() {
-  // Serial.println("Updating WCET");
-  wcet = max(endTime - startTime, wcet);
 }
