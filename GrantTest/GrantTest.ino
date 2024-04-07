@@ -17,12 +17,13 @@ void TaskNavigateMaze(void *pvParameters);
 void TaskController(void *pvParameters);
 void TaskSensing(void *pvParameters);
 
-TaskHandle_t xSensingHandle, xSpinHandle, xNavigateMazeHandle;
+TaskHandle_t xSensingHandle, xControllerHandle, xNavigateMazeHandle;
 char edge, lastEdge;
 float sensingPeriod = 1000, guidancePeriod = 300, controllerPeriod = 150;
-int intendedHeading, error = 0;
+int intendedHeading=0, error = 0;
 int baseSpeed = 30, maxSpeed = 100, motorBias = 5;
 int rightTurnAngle = 71, leftTurnAngle = -67;
+
 enum Manuever { DriveStraight, Backup, TurningLeft};
 Manuever manuever;
 /***** END TASK-UNDER-TEST GLOBALS ******/
@@ -55,13 +56,28 @@ void setup(){
 
   // Task-under-test
   xTaskCreate(
+  TaskNavigateMaze
+  ,  (const portCHAR *)"maze guidance task"
+  ,  128 
+  ,  NULL
+  ,  3
+  ,  &xNavigateMazeHandle );
+
+  xTaskCreate(
+  TaskController
+  ,  (const portCHAR *)"Drive in direction of intended heading"
+  ,  128 
+  ,  NULL
+  ,  3
+  ,  &xControllerHandle );
+
+  xTaskCreate(
   TaskSensing
   ,  (const portCHAR *)"Check for edges"
   ,  128 
   ,  NULL
   ,  3 
-  ,  &xSensingHandle
-  );
+  ,  &xSensingHandle );
 
   vTaskSuspend(xSensingHandle);
 }
@@ -70,7 +86,9 @@ void loop(){}
 
 void TestDriver(void *pvParameters)
 {
-  vTaskResume(xSensingHandle);
+  vTaskResume(xNavigateMazeHandle);
+//   vTaskResume(xControllerHandle);
+//   vTaskResume(xSensingHandle);
 
   Serial.println(wcet);
 }
@@ -81,7 +99,8 @@ void TaskNavigateMaze(void *pvParameters) {
   unsigned long time = millis() - startTime;
   SetAllPixelsRGB(0,0,0);
 
-  for(;;) {
+  for(int i=0; i<ITERATIONS; i++) {
+    startTime = micros();
     time = millis() - startTime;
 
     // Logic for when to change state
@@ -107,9 +126,12 @@ void TaskNavigateMaze(void *pvParameters) {
         }
     }
 
+    endTime = micros();
+    updateWCET();
     vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
 
+  vTaskSuspend(xNavigateMazeHandle);
 }
 
 void TaskController(void *pvParameters) {
@@ -126,7 +148,8 @@ void TaskController(void *pvParameters) {
 
   int u;
 
-  for(;;) {
+  for(int i=0; i<ITERATIONS; i++) {
+    startTime = micros();
     if(currentManuever != manuever) {
       currentManuever = manuever;
       switch (manuever)
@@ -204,8 +227,13 @@ void TaskController(void *pvParameters) {
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
     Motors(speedLeft, speedRight);
+
+    endTime = micros();
+    updateWCET();
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
+
+  vTaskSuspend(xControllerHandle);
 }
 
 void TaskSensing(void *pvParameters) {
