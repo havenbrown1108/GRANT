@@ -213,7 +213,7 @@ void TaskController(void *pvParameters) {
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
     Motors(speedLeft, speedRight);
-    vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
+    vTaskDelay(controllerPeriod / portTICK_PERIOD_MS); // put check to current time, delay until period - executed time
   }
 }
 
