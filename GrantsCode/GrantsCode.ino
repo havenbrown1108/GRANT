@@ -3,7 +3,7 @@ Lab4
 Navigates a maze with two obstacles by following the policy "always turn left" when it reaches edges until it reaches the goal. We turn on lights to represent the state 
 the Ringo is in so we can debug our bug.
 */
-#include <Arduino_FreeRTOS.h>
+// #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
 void TaskNavigateMaze(void *pvParameters);
@@ -11,9 +11,9 @@ void TaskController(void *pvParameters);
 void TaskSensing(void *pvParameters);
 
 // Globals
-TaskHandle_t xControllerHandle;
-TaskHandle_t xSensingHandle;
-TaskHandle_t xNavigateMazeHandle;
+// TaskHandle_t xControllerHandle;
+// TaskHandle_t xSensingHandle;
+// TaskHandle_t xNavigateMazeHandle;
 
 float guidancePeriod = 300;
 float controllerPeriod = 150;
@@ -35,7 +35,6 @@ char edge;
 enum Manuever { DriveStraight, Backup, TurningLeft};
 Manuever manuever;
 
-
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
   SetAllPixelsRGB(0, 0, 0);
@@ -53,29 +52,29 @@ void setup(){
 
   ResetLookAtEdge();
 
-  xTaskCreate(
-  TaskNavigateMaze
-  ,  (const portCHAR *)"maze guidance task"
-  ,  128 
-  ,  NULL
-  ,  1 
-  ,  &xNavigateMazeHandle );
+//   xTaskCreate(
+//   TaskNavigateMaze
+//   ,  (const portCHAR *)"maze guidance task"
+//   ,  128 
+//   ,  NULL
+//   ,  1 
+//   ,  &xNavigateMazeHandle );
 
-  xTaskCreate(
-  TaskController
-  ,  (const portCHAR *)"Drive in direction of intended heading"
-  ,  128 
-  ,  NULL
-  ,  2 
-  ,  &xControllerHandle );
+//   xTaskCreate(
+//   TaskController
+//   ,  (const portCHAR *)"Drive in direction of intended heading"
+//   ,  128 
+//   ,  NULL
+//   ,  2 
+//   ,  &xControllerHandle );
 
-  xTaskCreate(
-  TaskSensing
-  ,  (const portCHAR *)"Check for edges"
-  ,  128 
-  ,  NULL
-  ,  3 
-  ,  &xSensingHandle );
+//   xTaskCreate(
+//   TaskSensing
+//   ,  (const portCHAR *)"Check for edges"
+//   ,  128 
+//   ,  NULL
+//   ,  3 
+//   ,  &xSensingHandle );
 
   intendedHeading = PresentHeading();
   manuever = DriveStraight;
@@ -116,7 +115,7 @@ void TaskNavigateMaze(void *pvParameters) {
         }
     }
 
-    vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
+    // vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
 
 }
@@ -213,7 +212,7 @@ void TaskController(void *pvParameters) {
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
     Motors(speedLeft, speedRight);
-    vTaskDelay(controllerPeriod / portTICK_PERIOD_MS); // put check to current time, delay until period - executed time
+    // vTaskDelay(controllerPeriod / portTICK_PERIOD_MS); // put check to current time, delay until period - executed time
   }
 }
 
@@ -224,6 +223,6 @@ void TaskSensing(void *pvParameters) {
         if(FrontEdgeDetected(edge)) {
             lastEdge = edge;
         }
-        vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
+        // vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
     }
 }
