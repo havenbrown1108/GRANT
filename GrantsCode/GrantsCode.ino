@@ -15,6 +15,8 @@ float guidancePeriod = 300;
 float controllerPeriod = 150;
 int sensingPeriod = 50;
 
+// queue<int> readyTasks;
+
 int intendedHeading;
 int error = 0;
 
@@ -30,6 +32,41 @@ char edge;
 
 enum Manuever { DriveStraight, Backup, TurningLeft};
 Manuever manuever;
+
+unsigned long startTime;
+int backingupTimeLimit = 1500;
+unsigned long time;
+// SetAllPixelsRGB(0,0,0);
+
+// Controller
+float Kp;
+float Ki;
+float Kd;
+
+int P, I, D;
+int currentHeading;
+int lastError;
+int speedLeft;
+int speedRight;
+Manuever currentManuever;
+
+int u;
+
+// Measured wcets in Lab 4
+float guidance_wcet = 0.576;
+float controller_wcet = 12.4;
+float sensing_wcet = 1.32;
+
+bool guidance_executed_this_frame;
+bool controller_executed_this_frame;
+bool sensing_executed_this_frame;
+
+unsigned long taskStartTime;
+unsigned long currentframeExecutionTime;
+
+int frame = 30;
+int hyperFrame = 300;
+
 
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
@@ -51,17 +88,93 @@ void setup(){
   intendedHeading = PresentHeading();
   manuever = DriveStraight;
   edge = 0x0;
-}
 
-void loop(){
-
-}
-
-void TaskNavigateMaze(void *pvParameters) {
-  unsigned long startTime = millis();
-  int backingupTimeLimit = 1500;
-  unsigned long time = millis() - startTime;
+  // Initialization of once local variables 
+  // NavigateMaze
+  startTime = millis();
+  backingupTimeLimit = 1500;
+  time = millis() - startTime;
   SetAllPixelsRGB(0,0,0);
+
+  // Controller
+  Kp = 1;
+  Ki = 1;
+  Kd = 1;
+
+  I = 0, D = 0;
+  currentHeading;
+  lastError = 0;
+  speedLeft = 50;
+  speedRight = 50;
+  currentManuever;
+
+}
+
+void loop() {
+  // Serial.println("looping");
+  guidance_executed_this_frame = false;
+  controller_executed_this_frame = false;
+  sensing_executed_this_frame = false;
+  bool allTasksExecuted = false;
+  unsigned long hyperframeStartTime = millis();
+
+  while(!allTasksExecuted) {
+    taskStartTime = millis();
+    ScheduleNextPriorityTask();
+    currentframeExecutionTime = millis() - taskStartTime;
+    // if extra time in frame execute a task that fits - maybe i should test what i have before getting too fancy here
+
+    if(guidance_executed_this_frame && controller_executed_this_frame && sensing_executed_this_frame) {
+      allTasksExecuted = true;
+    }
+  }
+  unsigned long currentHyperframeExecTime = millis() - hyperframeStartTime;
+
+  delay(hyperFrame - currentHyperframeExecTime); // might need to add port tick microseconds
+
+
+}
+
+void ScheduleNextPriorityTask() {
+  if(!sensing_executed_this_frame) {
+    TaskSensing();
+    sensing_executed_this_frame = true;
+  }
+  else if(!controller_executed_this_frame) {
+    TaskController();
+    controller_executed_this_frame = true;
+  }
+  else if(!guidance_executed_this_frame) {
+    TaskNavigateMaze();
+    guidance_executed_this_frame = true;
+  }
+  else {
+    Serial.println("Something is wrong, there are no tasks to schedule");
+  }
+}
+
+void ScheduleNextTaskThatFits() {
+  if(!sensing_executed_this_frame) {
+    TaskSensing();
+    sensing_executed_this_frame = true;
+  }
+  else if(!controller_executed_this_frame) {
+    TaskController();
+    controller_executed_this_frame = true;
+  }
+  else if(!guidance_executed_this_frame) {
+    TaskNavigateMaze();
+    guidance_executed_this_frame = true;
+  }
+}
+
+void TaskNavigateMaze() {
+  // Serial.println("navigating");
+  // OnEyes(0, 0, 100);
+  // unsigned long startTime = millis();
+  // int backingupTimeLimit = 1500;
+  // unsigned long time = millis() - startTime;
+  // SetAllPixelsRGB(0,0,0);
 
   time = millis() - startTime;
 
@@ -90,19 +203,21 @@ void TaskNavigateMaze(void *pvParameters) {
 
 }
 
-void TaskController(void *pvParameters) {
-  float Kp = 1;
-  float Ki = 1;
-  float Kd = 1;
+void TaskController() {
+  // Serial.println("controlling");
+  // OnEyes(100, 0, 0);
+  // float Kp = 1;
+  // float Ki = 1;
+  // float Kd = 1;
 
-  int P, I = 0, D = 0;
-  int currentHeading;
-  int lastError = 0;
-  int speedLeft = 50;
-  int speedRight = 50;
-  Manuever currentManuever;
+  // int P, I = 0, D = 0;
+  // int currentHeading;
+  // int lastError = 0;
+  // int speedLeft = 50;
+  // int speedRight = 50;
+  // Manuever currentManuever;
 
-  int u;
+  // int u;
 
   if(currentManuever != manuever) {
     currentManuever = manuever;
@@ -183,7 +298,9 @@ void TaskController(void *pvParameters) {
   Motors(speedLeft, speedRight);
 }
 
-void TaskSensing(void *pvParameters) {
+void TaskSensing() {
+  // Serial.println("sensing");
+  // OnEyes(0, 100, 0);
   edge = LookForEdge();
   if(FrontEdgeDetected(edge)) {
       lastEdge = edge;
