@@ -1,21 +1,19 @@
 /* 
-Lab4
+Lab5: Cyclic Executive
 Navigates a maze with two obstacles by following the policy "always turn left" when it reaches edges until it reaches the goal. We turn on lights to represent the state 
 the Ringo is in so we can debug our bug.
 */
 #include "RingoHardware.h"
 
-void TaskNavigateMaze(void *pvParameters);
-void TaskController(void *pvParameters);
-void TaskSensing(void *pvParameters);
+void TaskNavigateMaze();
+void TaskController();
+void TaskSensing();
 
 // Globals
 
 float guidancePeriod = 300;
 float controllerPeriod = 150;
 int sensingPeriod = 50;
-
-// queue<int> readyTasks;
 
 int intendedHeading;
 int error = 0;
@@ -33,10 +31,12 @@ char edge;
 enum Manuever { DriveStraight, Backup, TurningLeft};
 Manuever manuever;
 
+// Once Local Variables, now globals
+
+// Navigation
 unsigned long startTime;
 int backingupTimeLimit = 1500;
 unsigned long time;
-// SetAllPixelsRGB(0,0,0);
 
 // Controller
 float Kp;
@@ -57,6 +57,7 @@ float guidance_wcet = 0.576;
 float controller_wcet = 12.4;
 float sensing_wcet = 1.32;
 
+// Cyclic Executive Helper Variables 
 bool guidance_executed_this_frame;
 bool controller_executed_this_frame;
 bool sensing_executed_this_frame;
@@ -64,6 +65,7 @@ bool sensing_executed_this_frame;
 unsigned long taskStartTime;
 unsigned long currentframeExecutionTime;
 
+// Calculated externally
 int frame = 30;
 int hyperFrame = 300;
 
@@ -111,7 +113,6 @@ void setup(){
 }
 
 void loop() {
-  // Serial.println("looping");
   guidance_executed_this_frame = false;
   controller_executed_this_frame = false;
   sensing_executed_this_frame = false;
@@ -122,7 +123,6 @@ void loop() {
     taskStartTime = millis();
     ScheduleNextPriorityTask();
     currentframeExecutionTime = millis() - taskStartTime;
-    // if extra time in frame execute a task that fits - maybe i should test what i have before getting too fancy here
 
     if(guidance_executed_this_frame && controller_executed_this_frame && sensing_executed_this_frame) {
       allTasksExecuted = true;
@@ -130,9 +130,7 @@ void loop() {
   }
   unsigned long currentHyperframeExecTime = millis() - hyperframeStartTime;
 
-  delay(hyperFrame - currentHyperframeExecTime); // might need to add port tick microseconds
-
-
+  delay(hyperFrame - currentHyperframeExecTime); 
 }
 
 void ScheduleNextPriorityTask() {
@@ -149,7 +147,7 @@ void ScheduleNextPriorityTask() {
     guidance_executed_this_frame = true;
   }
   else {
-    Serial.println("Something is wrong, there are no tasks to schedule");
+    Serial.println("Something has gone terribly wrong");
   }
 }
 
@@ -169,13 +167,6 @@ void ScheduleNextTaskThatFits() {
 }
 
 void TaskNavigateMaze() {
-  // Serial.println("navigating");
-  // OnEyes(0, 0, 100);
-  // unsigned long startTime = millis();
-  // int backingupTimeLimit = 1500;
-  // unsigned long time = millis() - startTime;
-  // SetAllPixelsRGB(0,0,0);
-
   time = millis() - startTime;
 
   // Logic for when to change state
@@ -204,21 +195,6 @@ void TaskNavigateMaze() {
 }
 
 void TaskController() {
-  // Serial.println("controlling");
-  // OnEyes(100, 0, 0);
-  // float Kp = 1;
-  // float Ki = 1;
-  // float Kd = 1;
-
-  // int P, I = 0, D = 0;
-  // int currentHeading;
-  // int lastError = 0;
-  // int speedLeft = 50;
-  // int speedRight = 50;
-  // Manuever currentManuever;
-
-  // int u;
-
   if(currentManuever != manuever) {
     currentManuever = manuever;
     switch (manuever)
@@ -299,8 +275,6 @@ void TaskController() {
 }
 
 void TaskSensing() {
-  // Serial.println("sensing");
-  // OnEyes(0, 100, 0);
   edge = LookForEdge();
   if(FrontEdgeDetected(edge)) {
       lastEdge = edge;
