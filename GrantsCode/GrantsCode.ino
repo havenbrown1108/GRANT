@@ -35,7 +35,6 @@ char edge;
 enum Manuever { DriveStraight, Backup, TurningLeft};
 Manuever manuever;
 
-
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
   SetAllPixelsRGB(0, 0, 0);
@@ -92,7 +91,6 @@ void TaskNavigateMaze(void *pvParameters) {
 
   for(;;) {
     time = millis() - startTime;
-
     // Logic for when to change state
     if (manuever == DriveStraight) {
       SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
@@ -115,10 +113,8 @@ void TaskNavigateMaze(void *pvParameters) {
           manuever = DriveStraight;
         }
     }
-
     vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
-
 }
 
 void TaskController(void *pvParameters) {
@@ -218,12 +214,12 @@ void TaskController(void *pvParameters) {
 }
 
 void TaskSensing(void *pvParameters) {
-    for(;;)
-    {
-        edge = LookForEdge();
-        if(FrontEdgeDetected(edge)) {
-            lastEdge = edge;
-        }
-        vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
+  for(;;)
+  {
+    edge = LookForEdge();
+    if(FrontEdgeDetected(edge)) {
+        lastEdge = edge;
     }
+    vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
+  }
 }
