@@ -257,17 +257,12 @@ void TaskController(void *pvParameters) {
       P = 0;
       I = 0;
       D = 0;
-      // newManueverDetected = false;
     }
 
     SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
     error = intendedHeading - currentHeading;
-    // if(error == 0) {
-    //   Serial.println("error is 0 in the controller task!");
-
-    // }
 
     P = error;
     I = I + error;
@@ -298,14 +293,12 @@ void TaskController(void *pvParameters) {
 
     speedLeft = min(speedLeft, maxSpeed);
     speedRight = min(speedRight, maxSpeed);
-    // Motors(speedLeft, speedRight);
+    Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
 }
 
 void TaskSensing(void *pvParameters) {
-    // TickType_t xLastWakeTime;
-    // xLastWakeTime = xTaskGetTickCount();
     Serial.println("sensing task");
 
     for(;;)
@@ -315,34 +308,3 @@ void TaskSensing(void *pvParameters) {
         vTaskDelay( edgeDetectorPeriod / portTICK_PERIOD_MS);
     }
 }
-
-// This is an aperiodic task that spins the lil guy
-// void TaskAvoidObstacle(void *pvParameters)
-// {
-//   for(;;)
-//   {
-//     // Stop and chirp to alert an edge detection
-//     Motors(0,0);
-
-//     // Back up
-//     Motors(-50,-50);
-//     vTaskDelay(1000 / portTICK_PERIOD_MS);
-//     Motors(0,0);
-
-//     // Turn
-//     if (RightFrontEdgeDetected(edge)) {
-//         Motors(50, 0);
-//         vTaskDelay(500 / portTICK_PERIOD_MS);
-//     } else if (LeftFrontEdgeDetected(edge)) {
-//         Motors(50, 0);
-//         vTaskDelay(500 / portTICK_PERIOD_MS);
-//     }
-    
-
-//     // Continue forward
-//     Motors(50,50);
-
-//     vTaskSuspend(xAvoidObstacleHandle);
-//     // vTaskResume(xSensingHandle);
-//   }
-// }
