@@ -9,11 +9,12 @@ the Ringo is in so we can debug our bug.
 void TaskNavigateMaze(void *pvParameters);
 void TaskController(void *pvParameters);
 void TaskSensing(void *pvParameters);
-
+bool RedEdgeDetected(char edge);
 // Globals
 TaskHandle_t xControllerHandle;
 TaskHandle_t xSensingHandle;
-TaskHandle_t xNavigateMazeHandle;
+// TaskHandle_t xNavigateMazeHandle;
+TaskHandle_t xFollowLineHandle;
 
 float guidancePeriod = 300;
 float controllerPeriod = 150;
@@ -32,8 +33,9 @@ int leftTurnAngle = -67;
 char lastEdge = 0x0;
 char edge;
 
-enum Manuever { DriveStraight, Backup, TurningLeft};
+enum Manuever { DriveStraight, Backup, TurningLeft, SwivelRight, SwivelLeft};
 Manuever manuever;
+// enum Antennae {Left, Right};
 
 
 void setup(){
@@ -53,13 +55,22 @@ void setup(){
 
   ResetLookAtEdge();
 
-  xTaskCreate(
-  TaskNavigateMaze
-  ,  (const portCHAR *)"maze guidance task"
+  // xTaskCreate(
+  // TaskNavigateMaze
+  // ,  (const portCHAR *)"maze guidance task"
+  // ,  128 
+  // ,  NULL
+  // ,  1 
+  // ,  &xNavigateMazeHandle );
+
+  xTaskCreate (
+    TaskFollowLine
+  ,  (const portCHAR *)"follow line guidance task"
   ,  128 
   ,  NULL
   ,  1 
-  ,  &xNavigateMazeHandle );
+  ,  &xFollowLineHandle
+  );
 
   xTaskCreate(
   TaskController
@@ -78,17 +89,18 @@ void setup(){
   ,  &xSensingHandle );
 
   intendedHeading = PresentHeading();
-  manuever = DriveStraight;
+  manuever = SwivelLeft;
   edge = 0x0;
+  SetAllPixelsRGB(0, 0, 0);
 }
 
 void loop(){}
 
-void TaskNavigateMaze(void *pvParameters) {
+
+void TaskFollowLine(void *pvParameters) {
   unsigned long startTime = millis();
-  int backingupTimeLimit = 1500;
   unsigned long time = millis() - startTime;
-  SetAllPixelsRGB(0,0,0);
+
 
   for(;;) {
     time = millis() - startTime;
@@ -96,29 +108,34 @@ void TaskNavigateMaze(void *pvParameters) {
     // Logic for when to change state
     if (manuever == DriveStraight) {
       SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
-      if(FrontEdgeDetected(edge)) {
-        manuever = Backup;
-        startTime = millis();
+      if(LeftFrontEdgeDetected(lastEdge)) {
+        manuever = SwivelLeft;
+        lastEdge = 0x0;
       }
-    } else if (manuever == Backup) {
+      else if (RightFrontEdgeDetected(lastEdge))
+      {
+        manuever = SwivelRight;
+        lastEdge = 0x0;
+      }
+      
+      
+    } else if (manuever == SwivelLeft) {
         SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
 
-        bool timeLimitReached = (time >= backingupTimeLimit) ? true : false;
-        if(timeLimitReached) {
-            manuever = TurningLeft;
-            lastEdge = 0x0;
-        }
-    }
-      else if (manuever == TurningLeft) {
-        SetPixelRGB(TAIL_TOP, 100, 100, 0); // Purple
-        if(error == 0) {
+        if(!FrontEdgeDetected(edge)) {
           manuever = DriveStraight;
         }
-    }
+        
+    } else if (manuever == SwivelRight) {
+      SetPixelRGB(TAIL_TOP, 100, 100, 0); // Purple
+      
+      if(!FrontEdgeDetected(edge)) {
+        manuever = DriveStraight;
+      }
+    } 
 
     vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
   }
-
 }
 
 void TaskController(void *pvParameters) {
@@ -148,21 +165,21 @@ void TaskController(void *pvParameters) {
           Kd = 1;
           baseSpeed = 30;
           break;
-        case Backup:
-          SetPixelRGB(BODY_TOP, 0, 100, 0);
-          intendedHeading = PresentHeading();
-          Kp = 1;
-          Ki = 1;
-          Kd = 1;
-          baseSpeed = -30;
-          break;
-        case TurningLeft:
+        case SwivelRight:
           SetPixelRGB(BODY_TOP, 100, 100, 0);
-          intendedHeading = PresentHeading() + (leftTurnAngle / 4);
-          Kp = 1;
+          intendedHeading = PresentHeading() + rightTurnAngle;
+          Kp = 0.25;
           Ki = 0;
           Kd = 0;
-          baseSpeed = 20;
+          baseSpeed = 10;
+          break;
+        case SwivelLeft:
+          SetPixelRGB(BODY_TOP, 0, 100, 0);
+          intendedHeading = PresentHeading() + leftTurnAngle;
+          Kp = 0.25;
+          Ki = 0;
+          Kd = 0;
+          baseSpeed = 10;
           break;
         default:
           break;
@@ -189,12 +206,12 @@ void TaskController(void *pvParameters) {
     if(error < 0) {
       OnEyes(100,0,0); // Red
       speedRight = -u + baseSpeed + motorBias;
-      speedLeft = manuever == TurningLeft ? -(-u + baseSpeed) : baseSpeed;
+      speedLeft = manuever == SwivelLeft ? -(-u + baseSpeed) : baseSpeed;
     }
     else if(error > 0) {
       OnEyes(0,100,0); // Green
       speedLeft = u + baseSpeed;
-      speedRight = manuever == TurningLeft ? -(-u + baseSpeed + motorBias) : baseSpeed;
+      speedRight = manuever == SwivelLeft ? -(-u + baseSpeed + motorBias) : baseSpeed;
     }
     else {
       OffEyes();
@@ -221,9 +238,21 @@ void TaskSensing(void *pvParameters) {
     for(;;)
     {
         edge = LookForEdge();
+
         if(FrontEdgeDetected(edge)) {
             lastEdge = edge;
         }
         vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
     }
+}
+
+bool RedEdgeDetected(char edge) {
+  if(LeftEdgeSensorValue > 950 && LeftEdgeSensorValue < 1020) {
+    return true;
+  }
+  if(RightEdgeSensorValue > 950 && RightEdgeSensorValue < 1020) {
+    return true;
+  }
+
+  return false;
 }
