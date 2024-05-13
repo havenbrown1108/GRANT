@@ -122,14 +122,22 @@ void TaskFollowLine(void *pvParameters) {
     } else if (manuever == SwivelLeft) {
         SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
 
-        if(!FrontEdgeDetected(edge)) {
+        // add if right edge detected swivel right
+      if (RightFrontEdgeDetected(lastEdge)) {
+        manuever = SwivelRight;
+        lastEdge = 0x0;
+      } else if(!FrontEdgeDetected(edge)) {
           manuever = DriveStraight;
-        }
+      }
         
     } else if (manuever == SwivelRight) {
       SetPixelRGB(TAIL_TOP, 100, 100, 0); // Purple
       
-      if(!FrontEdgeDetected(edge)) {
+      // add if left edge detected swivel left
+      if(LeftFrontEdgeDetected(lastEdge)) {
+        manuever = SwivelLeft;
+        lastEdge = 0x0;
+      } else if(!FrontEdgeDetected(edge)) {
         manuever = DriveStraight;
       }
     } 
@@ -168,7 +176,7 @@ void TaskController(void *pvParameters) {
         case SwivelRight:
           SetPixelRGB(BODY_TOP, 100, 100, 0);
           intendedHeading = PresentHeading() + rightTurnAngle;
-          Kp = 0.25;
+          Kp = 1;
           Ki = 0;
           Kd = 0;
           baseSpeed = 10;
@@ -176,7 +184,7 @@ void TaskController(void *pvParameters) {
         case SwivelLeft:
           SetPixelRGB(BODY_TOP, 0, 100, 0);
           intendedHeading = PresentHeading() + leftTurnAngle;
-          Kp = 0.25;
+          Kp = 1;
           Ki = 0;
           Kd = 0;
           baseSpeed = 10;
