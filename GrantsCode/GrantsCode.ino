@@ -89,7 +89,7 @@ void setup(){
   ,  &xSensingHandle );
 
   intendedHeading = PresentHeading();
-  manuever = SwivelLeft;
+  manuever = DriveStraight;
   edge = 0x0;
   SetAllPixelsRGB(0, 0, 0);
 }
@@ -108,16 +108,15 @@ void TaskFollowLine(void *pvParameters) {
     // Logic for when to change state
     if (manuever == DriveStraight) {
       SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
-      if(LeftFrontEdgeDetected(lastEdge)) {
+      if(LeftFrontEdgeDetected(edge)) {
         manuever = SwivelLeft;
         lastEdge = 0x0;
       }
-      else if (RightFrontEdgeDetected(lastEdge))
+      else if (RightFrontEdgeDetected(edge))
       {
         manuever = SwivelRight;
         lastEdge = 0x0;
       }
-      
       
     } else if (manuever == SwivelLeft) {
         SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
@@ -175,7 +174,7 @@ void TaskController(void *pvParameters) {
           break;
         case SwivelRight:
           SetPixelRGB(BODY_TOP, 100, 100, 0);
-          intendedHeading = PresentHeading() + rightTurnAngle;
+          intendedHeading = PresentHeading() + rightTurnAngle * 1.5;
           Kp = 1;
           Ki = 0;
           Kd = 0;
@@ -183,7 +182,7 @@ void TaskController(void *pvParameters) {
           break;
         case SwivelLeft:
           SetPixelRGB(BODY_TOP, 0, 100, 0);
-          intendedHeading = PresentHeading() + leftTurnAngle;
+          intendedHeading = PresentHeading() + leftTurnAngle  * 1.5;
           Kp = 1;
           Ki = 0;
           Kd = 0;
