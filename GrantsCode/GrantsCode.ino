@@ -1,13 +1,15 @@
 /* 
-Lab4
-Navigates a maze with two obstacles by following the policy "always turn left" when it reaches edges until it reaches the goal. We turn on lights to represent the state 
-the Ringo is in so we can debug our bug.
+Final Project
+Navigates a maze
 */
 #include <Arduino_FreeRTOS.h>
 #include "RingoHardware.h"
 
 void TaskFollowLine(void *pvParameters);
 void TaskController(void *pvParameters);
+bool OurLeftEdgeDetected();
+bool OurRightEdgeDetected();
+
 // Globals
 TaskHandle_t xControllerHandle;
 TaskHandle_t xFollowLineHandle;
@@ -25,33 +27,24 @@ int motorBias = 15; //Our left motor is stronger than our right motor so this sh
 int rightTurnAngle = 71;
 int leftTurnAngle = -67;
 
-char lastEdge = 0x0;
-char edge;
-
 enum Manuever { DriveStraight, Backup, TurningLeft, SwivelRight, SwivelLeft};
 Manuever manuever;
-
 
 void setup(){
   HardwareBegin();        //initialize Ringo's brain to work with his circuitry
   SetAllPixelsRGB(0, 0, 0);
   SwitchButtonToPixels(); //set shared line to control NeoPixel lights
   SwitchMotorsToSerial(); //Call "SwitchMotorsToSerial()" before using Serial.print functions as motors & serial share a line
-  // Set up for IR
-  RxIRRestart(4);
-  IsIRDone();
-  GetIRButton();
 
   // Setup Navigation
   delay(500);
   NavigationBegin();
   ResumeNavigation();
-
   ResetLookAtEdge();
 
   xTaskCreate (
     TaskFollowLine
-  ,  (const portCHAR *)"follow line guidance task"
+  ,  (const portCHAR *)"Follow line guidance task"
   ,  128 
   ,  NULL
   ,  2 
@@ -64,7 +57,8 @@ void setup(){
   ,  128 
   ,  NULL
   ,  1 
-  ,  &xControllerHandle );
+  ,  &xControllerHandle
+  );
 
   intendedHeading = PresentHeading();
   manuever = DriveStraight;
@@ -79,8 +73,8 @@ void TaskFollowLine(void *pvParameters) {
     Manuever lastManuever;
     for(;;) {
         // Logic for when to change state
-        LookForEdge();
 
+        LookForEdge();
         if (manuever == SwivelRight && (millis() - startTime) < minManueverTime){
             manuever = SwivelRight;
         } else if (OurRightEdgeDetected() ) {
@@ -165,8 +159,6 @@ void TaskController(void *pvParameters) {
     D = error - lastError;
 
     u = (Kp*P) + (Ki*I) + (Kd*D);
-    Serial.print("Error = ");
-    Serial.println(error);
 
     if(error < 0) {
       OnEyes(100,0,0); // Red
@@ -180,7 +172,7 @@ void TaskController(void *pvParameters) {
         }
     }
     else if(error > 0) {
-      OnEyes(0,100,0); // Green
+        OnEyes(0,100,0); // Green
         if (manuever == DriveStraight) {
             speedLeft = -u + baseSpeed;
             speedRight = baseSpeed + motorBias;
@@ -192,30 +184,17 @@ void TaskController(void *pvParameters) {
             speedLeft = u + baseSpeed - motorBias;
             speedRight = -(baseSpeed + motorBias);
         }
-          // something is causing our left motor value to explode 
-
-        // speedLeft = -u + baseSpeed;
-        // if (manuever == DriveStraight) {
-        //     // speedLeft = baseSpeed - motorBias;
-        // } else if (manuever == SwivelLeft) {
-        //     speedLeft = -baseSpeed * 0.75;
-        // } else {
-        //     speedLeft = -baseSpeed * 0.5;
-        // }
-        Serial.print(speedLeft);
-        Serial.print(", ");
-        Serial.println(speedRight);
     }
     else {
         if (manuever == DriveStraight) {
             speedRight = baseSpeed + motorBias;
             speedLeft = baseSpeed;
         }
-        if(manuever == SwivelLeft) {
+        if (manuever == SwivelLeft) {
             intendedHeading = PresentHeading() - 10;
             constrain(intendedHeading, maxLeft, -maxLeft);
         }
-        if(manuever == SwivelRight) {
+        if (manuever == SwivelRight) {
             intendedHeading = PresentHeading() + 10;
             constrain(intendedHeading, -maxRight, maxRight);
         }
@@ -225,9 +204,6 @@ void TaskController(void *pvParameters) {
 
     speedLeft = constrain(speedLeft, -65, 65);
     speedRight = constrain(speedRight, -maxSpeed, maxSpeed);
-    Serial.print(speedLeft);
-    Serial.print(", ");
-    Serial.println(speedRight);
     Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
@@ -235,27 +211,14 @@ void TaskController(void *pvParameters) {
 
 bool OurLeftEdgeDetected() {
     if(LeftEdgeSensorAverage > 150 && LeftEdgeSensorAverage < 550) {
-        // Serial.println("Left edge detected");
         return true;
     }
-
     return false;
 }
 
 bool OurRightEdgeDetected() {
     if(RightEdgeSensorAverage > 150 && RightEdgeSensorAverage < 750) {
-        // Serial.println("Right edge detected");
         return true;
     }
-
-    return false;
-}
-
-bool OurBackEdgeDetected() {
-    if(RearEdgeSensorValue > 150 && RearEdgeSensorValue < 550) {
-        Serial.println("Rear edge detected");
-        return true;
-    }
-
     return false;
 }
