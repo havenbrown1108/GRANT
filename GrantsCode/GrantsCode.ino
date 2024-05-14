@@ -106,6 +106,7 @@ void TaskFollowLine(void *pvParameters) {
         LookForEdge();
         if (manuever == DriveStraight) {
             SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
+            lastManuever = DriveStraight;
             if(OurLeftEdgeDetected()) {
                 manuever = SwivelLeft;
                 lastManuever = SwivelLeft;
@@ -121,6 +122,17 @@ void TaskFollowLine(void *pvParameters) {
                 // lastEdge = 0x0;
                 // Serial.println("Right edge");
             }
+
+            // if(!OurBackEdgeDetected()) {
+            //      if(lastManuever == SwivelLeft) {
+            //             manuever = SwivelRight;
+            //             lastManuever = SwivelRight;
+            //         }
+            //         else {
+            //             manuever = SwivelLeft;
+            //             lastManuever = SwivelLeft;
+            //         }
+            // }
         
         } else if (manuever == SwivelLeft) {
             SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
@@ -135,7 +147,15 @@ void TaskFollowLine(void *pvParameters) {
                 } else if(!(OurLeftEdgeDetected() || OurRightEdgeDetected())) {
                     manuever = DriveStraight;
                 } else if((OurLeftEdgeDetected() && OurRightEdgeDetected())) {
-                    manuever = lastManuever;
+                    // manuever = lastManuever;
+                    if(lastManuever == SwivelLeft) {
+                        manuever = SwivelRight;
+                        // lastManuever = SwivelRight;
+                    }
+                    else {
+                        manuever = SwivelLeft;
+                        // lastManuever = SwivelLeft;
+                    }
                 }
             }
         } else if (manuever == SwivelRight) {
@@ -146,6 +166,10 @@ void TaskFollowLine(void *pvParameters) {
             //   if(LeftFrontEdgeDetected(lastEdge)) {
             if(millis() - startTime > minManueverTime) {
 
+                // if(!OurBackEdgeDetected()) {
+
+                // }
+
                 if(OurLeftEdgeDetected()) {
                     manuever = SwivelLeft;
                     startTime = millis();
@@ -153,7 +177,13 @@ void TaskFollowLine(void *pvParameters) {
                 } else if(!(OurLeftEdgeDetected() || OurRightEdgeDetected())) {
                     manuever = DriveStraight;
                 } else if((OurLeftEdgeDetected() && OurRightEdgeDetected())) {
-                    manuever = lastManuever;
+                    // manuever = lastManuever;
+                    if(lastManuever == SwivelLeft) {
+                        manuever = SwivelRight;
+                    }
+                    else {
+                        manuever = SwivelLeft;
+                    }
                 }
             }
         } 
@@ -174,8 +204,8 @@ void TaskController(void *pvParameters) {
   int speedRight = 50;
   Manuever currentManuever;
 
-  int maxLeft = 1.5 * leftTurnAngle;
-  int maxRight = 1.5 * rightTurnAngle;
+  int maxLeft = 2 * leftTurnAngle;
+  int maxRight = 2 * rightTurnAngle;
 
   int u;
 
@@ -233,23 +263,29 @@ void TaskController(void *pvParameters) {
 
     if(error < 0) {
       OnEyes(100,0,0); // Red
-      speedRight = -u + baseSpeed + motorBias;
+    //   speedRight = -u + baseSpeed + motorBias;
+    //   speedRight = manuever == SwivelRight ? -(-u + baseSpeed - motorBias) : baseSpeed + motorBias;
+    //   speedLeft = manuever == SwivelLeft ? -(-u + baseSpeed) : baseSpeed;
+        speedRight = -u + baseSpeed + motorBias;
       speedLeft = manuever == SwivelLeft ? -(-u + baseSpeed) : baseSpeed;
     }
     else if(error > 0) {
       OnEyes(0,100,0); // Green
-      speedLeft = u + baseSpeed;
+    //   speedLeft = u + baseSpeed;
+    //     speedLeft = manuever == SwivelRight ? u + baseSpeed : baseSpeed;
+    //   speedRight = manuever == SwivelLeft ? -(-u + baseSpeed - motorBias) : baseSpeed + motorBias;
+        speedLeft = u + baseSpeed;
       speedRight = manuever == SwivelRight ? -(-u + baseSpeed + motorBias) : baseSpeed;
     }
     else {
-      OffEyes();
+    //   OffEyes();
       if(currentManuever != Backup) {
         speedLeft = max(baseSpeed - motorBias, 0);
         speedRight = max(baseSpeed, 0);
       }
       else {
-        speedLeft = baseSpeed - motorBias;
-        speedRight = baseSpeed;
+        speedLeft = baseSpeed;
+        speedRight = baseSpeed + motorBias;
       }
     }
 
@@ -281,9 +317,9 @@ void TaskSensing(void *pvParameters) {
     for(;;)
     {
         edge = LookForEdge();
-        // Serial.print(LeftEdgeSensorValue);
-        // Serial.print(", ");
-        // Serial.println(RightEdgeSensorValue);
+        Serial.print(LeftEdgeSensorValue);
+        Serial.print(", ");
+        Serial.println(RightEdgeSensorValue);
 
         if(FrontEdgeDetected(edge)) {
             lastEdge = edge;
@@ -302,7 +338,7 @@ bool OurLeftEdgeDetected() {
 }
 
 bool OurRightEdgeDetected() {
-    if(RightEdgeSensorValue > 150 && RightEdgeSensorValue < 550) {
+    if(RightEdgeSensorValue > 150 && RightEdgeSensorValue < 750) {
         Serial.println("Right edge detected");
         return true;
     }
@@ -310,7 +346,16 @@ bool OurRightEdgeDetected() {
     return false;
 }
 
-bool RedEdgeDetected(char edge) {
+bool OurBackEdgeDetected() {
+    if(RearEdgeSensorValue > 150 && RearEdgeSensorValue < 550) {
+        Serial.println("Rear edge detected");
+        return true;
+    }
+
+    return false;
+}
+
+bool RedEdgeDetected() {
   if(LeftEdgeSensorValue > 950 && LeftEdgeSensorValue < 1020) {
     return true;
   }
