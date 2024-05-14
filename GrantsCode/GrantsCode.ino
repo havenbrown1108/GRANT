@@ -16,16 +16,16 @@ TaskHandle_t xSensingHandle;
 // TaskHandle_t xNavigateMazeHandle;
 TaskHandle_t xFollowLineHandle;
 
-float guidancePeriod = 300;
-float controllerPeriod = 150;
+float guidancePeriod = 50;
+float controllerPeriod = 300;
 int sensingPeriod = 50;
 
 int intendedHeading;
 int error = 0;
 
 int baseSpeed = 30;
-int maxSpeed = 100;
-int motorBias = 5; //Our left motor is stronger than our right motor so this should account for that
+int maxSpeed = 50;
+int motorBias = 10; //Our left motor is stronger than our right motor so this should account for that
 
 int rightTurnAngle = 71;
 int leftTurnAngle = -67;
@@ -68,7 +68,7 @@ void setup(){
   ,  (const portCHAR *)"follow line guidance task"
   ,  128 
   ,  NULL
-  ,  1 
+  ,  2 
   ,  &xFollowLineHandle
   );
 
@@ -77,16 +77,16 @@ void setup(){
   ,  (const portCHAR *)"Drive in direction of intended heading"
   ,  128 
   ,  NULL
-  ,  2 
+  ,  1 
   ,  &xControllerHandle );
 
-  xTaskCreate(
-  TaskSensing
-  ,  (const portCHAR *)"Check for edges"
-  ,  128 
-  ,  NULL
-  ,  3 
-  ,  &xSensingHandle );
+//   xTaskCreate(
+//   TaskSensing
+//   ,  (const portCHAR *)"Check for edges"
+//   ,  128 
+//   ,  NULL
+//   ,  3 
+//   ,  &xSensingHandle );
 
   intendedHeading = PresentHeading();
   manuever = DriveStraight;
@@ -98,51 +98,68 @@ void loop(){}
 
 
 void TaskFollowLine(void *pvParameters) {
-  unsigned long startTime = millis();
-  unsigned long time = millis() - startTime;
-
-
-  for(;;) {
-    time = millis() - startTime;
-
-    // Logic for when to change state
-    if (manuever == DriveStraight) {
-      SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
-      if(LeftFrontEdgeDetected(edge)) {
-        manuever = SwivelLeft;
-        lastEdge = 0x0;
-      }
-      else if (RightFrontEdgeDetected(edge))
-      {
-        manuever = SwivelRight;
-        lastEdge = 0x0;
-      }
-      
-    } else if (manuever == SwivelLeft) {
-        SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
-
-        // add if right edge detected swivel right
-      if (RightFrontEdgeDetected(lastEdge)) {
-        manuever = SwivelRight;
-        lastEdge = 0x0;
-      } else if(!FrontEdgeDetected(edge)) {
-          manuever = DriveStraight;
-      }
+    int minManueverTime = 500;
+    int startTime = millis();
+    Manuever lastManuever;
+    for(;;) {
+        // Logic for when to change state
+        LookForEdge();
+        if (manuever == DriveStraight) {
+            SetPixelRGB(TAIL_TOP, 0, 0, 100); // Blue
+            if(OurLeftEdgeDetected()) {
+                manuever = SwivelLeft;
+                lastManuever = SwivelLeft;
+                startTime = millis();
+                // lastEdge = 0x0;
+                // Serial.println("left edge");
+            }
+            else if (OurRightEdgeDetected())
+            {
+                manuever = SwivelRight;
+                lastManuever = SwivelRight;
+                startTime = millis();
+                // lastEdge = 0x0;
+                // Serial.println("Right edge");
+            }
         
-    } else if (manuever == SwivelRight) {
-      SetPixelRGB(TAIL_TOP, 100, 100, 0); // Purple
-      
-      // add if left edge detected swivel left
-      if(LeftFrontEdgeDetected(lastEdge)) {
-        manuever = SwivelLeft;
-        lastEdge = 0x0;
-      } else if(!FrontEdgeDetected(edge)) {
-        manuever = DriveStraight;
-      }
-    } 
+        } else if (manuever == SwivelLeft) {
+            SetPixelRGB(TAIL_TOP, 0, 100, 0); // Green
+            // Serial.println("swivelleft");
 
-    vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
-  }
+            // add if right edge detected swivel right
+            if(millis() - startTime > minManueverTime) {
+                if (OurRightEdgeDetected()) {
+                    manuever = SwivelRight;
+                    startTime = millis();
+                    // lastEdge = 0x0;
+                } else if(!(OurLeftEdgeDetected() || OurRightEdgeDetected())) {
+                    manuever = DriveStraight;
+                } else if((OurLeftEdgeDetected() && OurRightEdgeDetected())) {
+                    manuever = lastManuever;
+                }
+            }
+        } else if (manuever == SwivelRight) {
+            SetPixelRGB(TAIL_TOP, 100, 0, 100); // Purple
+            // Serial.println("swivelright");
+            
+            // add if left edge detected swivel left
+            //   if(LeftFrontEdgeDetected(lastEdge)) {
+            if(millis() - startTime > minManueverTime) {
+
+                if(OurLeftEdgeDetected()) {
+                    manuever = SwivelLeft;
+                    startTime = millis();
+                    // lastEdge = 0x0;
+                } else if(!(OurLeftEdgeDetected() || OurRightEdgeDetected())) {
+                    manuever = DriveStraight;
+                } else if((OurLeftEdgeDetected() && OurRightEdgeDetected())) {
+                    manuever = lastManuever;
+                }
+            }
+        } 
+
+        vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
+    }
 }
 
 void TaskController(void *pvParameters) {
@@ -157,9 +174,13 @@ void TaskController(void *pvParameters) {
   int speedRight = 50;
   Manuever currentManuever;
 
+  int maxLeft = 1.5 * leftTurnAngle;
+  int maxRight = 1.5 * rightTurnAngle;
+
   int u;
 
   for(;;) {
+    // Serial.println("Hello");
     if(currentManuever != manuever) {
       currentManuever = manuever;
       switch (manuever)
@@ -170,20 +191,20 @@ void TaskController(void *pvParameters) {
           Kp = 1;
           Ki = 1;
           Kd = 1;
-          baseSpeed = 30;
+          baseSpeed = 40;
           break;
         case SwivelRight:
-          SetPixelRGB(BODY_TOP, 100, 100, 0);
-          intendedHeading = PresentHeading() + rightTurnAngle * 1.5;
-          Kp = 1;
+          SetPixelRGB(BODY_TOP, 100, 0, 100);
+          intendedHeading = PresentHeading() + 25;
+          Kp = 0.75;
           Ki = 0;
           Kd = 0;
           baseSpeed = 10;
           break;
         case SwivelLeft:
           SetPixelRGB(BODY_TOP, 0, 100, 0);
-          intendedHeading = PresentHeading() + leftTurnAngle  * 1.5;
-          Kp = 1;
+          intendedHeading = PresentHeading() - 25;
+          Kp = 0.75;
           Ki = 0;
           Kd = 0;
           baseSpeed = 10;
@@ -218,7 +239,7 @@ void TaskController(void *pvParameters) {
     else if(error > 0) {
       OnEyes(0,100,0); // Green
       speedLeft = u + baseSpeed;
-      speedRight = manuever == SwivelLeft ? -(-u + baseSpeed + motorBias) : baseSpeed;
+      speedRight = manuever == SwivelRight ? -(-u + baseSpeed + motorBias) : baseSpeed;
     }
     else {
       OffEyes();
@@ -232,10 +253,25 @@ void TaskController(void *pvParameters) {
       }
     }
 
+    if(error == 0) {
+        if(manuever == SwivelLeft) {
+            intendedHeading = PresentHeading() - 5;
+            constrain(intendedHeading, maxLeft, -maxLeft);
+        }
+        if(manuever == SwivelRight) {
+            intendedHeading = PresentHeading() + 5;
+            constrain(intendedHeading, -maxRight, maxRight);
+        }
+    }
+
     lastError = error;
 
-    speedLeft = min(speedLeft, maxSpeed);
-    speedRight = min(speedRight, maxSpeed);
+    speedLeft = constrain(speedLeft, -maxSpeed, maxSpeed);
+    speedRight = constrain(speedRight, -maxSpeed, maxSpeed);
+    // Serial.print("Hello: ");
+    // Serial.print(speedLeft);
+    // Serial.print(", ");
+    // Serial.println(speedRight);
     Motors(speedLeft, speedRight);
     vTaskDelay(controllerPeriod / portTICK_PERIOD_MS);
   }
@@ -245,12 +281,33 @@ void TaskSensing(void *pvParameters) {
     for(;;)
     {
         edge = LookForEdge();
+        // Serial.print(LeftEdgeSensorValue);
+        // Serial.print(", ");
+        // Serial.println(RightEdgeSensorValue);
 
         if(FrontEdgeDetected(edge)) {
             lastEdge = edge;
         }
         vTaskDelay(sensingPeriod / portTICK_PERIOD_MS);
     }
+}
+
+bool OurLeftEdgeDetected() {
+    if(LeftEdgeSensorValue > 150 && LeftEdgeSensorValue < 550) {
+        Serial.println("Left edge detected");
+        return true;
+    }
+
+    return false;
+}
+
+bool OurRightEdgeDetected() {
+    if(RightEdgeSensorValue > 150 && RightEdgeSensorValue < 550) {
+        Serial.println("Right edge detected");
+        return true;
+    }
+
+    return false;
 }
 
 bool RedEdgeDetected(char edge) {
