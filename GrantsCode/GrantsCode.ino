@@ -17,14 +17,14 @@ TaskHandle_t xSensingHandle;
 TaskHandle_t xFollowLineHandle;
 
 float guidancePeriod = 50;
-float controllerPeriod = 300;
+float controllerPeriod = 50;
 int sensingPeriod = 50;
 
 int intendedHeading;
 int error = 0;
 
 int baseSpeed = 30;
-int maxSpeed = 50;
+int maxSpeed = 80;
 int motorBias = 15; //Our left motor is stronger than our right motor so this should account for that
 
 int rightTurnAngle = 71;
@@ -98,7 +98,7 @@ void loop(){}
 
 
 void TaskFollowLine(void *pvParameters) {
-    int minManueverTime = 500;
+    int minManueverTime = 750;
     int startTime = millis();
     Manuever lastManuever;
     for(;;) {
@@ -107,15 +107,18 @@ void TaskFollowLine(void *pvParameters) {
 
         if (manuever == SwivelRight && (millis() - startTime) < minManueverTime){
             manuever = SwivelRight;
+            // intendedHeading = PresentHeading() + 30;
         } else if (OurRightEdgeDetected() ) {
             manuever = SwivelRight;
+            // intendedHeading = PresentHeading() + 30;
             startTime = millis();
             // vTaskDelay( 500 / portTICK_PERIOD_MS);
         } else if (OurLeftEdgeDetected()) {
             manuever = DriveStraight;
-            intendedHeading = PresentHeading();
+            // intendedHeading = PresentHeading();
         } else  {
             manuever = SwivelLeft;
+            // intendedHeading = PresentHeading() - 10;
         }
 
         vTaskDelay(guidancePeriod / portTICK_PERIOD_MS);
@@ -134,13 +137,15 @@ void TaskController(void *pvParameters) {
   int speedRight = 50;
   Manuever currentManuever;
 
-  int maxLeft = 1 * leftTurnAngle;
+  int maxLeft = 1.5 * leftTurnAngle;
   int maxRight = 2.1 * rightTurnAngle;
 
   int u;
 
   for(;;) {
     // Serial.println("Hello");
+    SimpleGyroNavigation();
+
     if(currentManuever != manuever) {
       currentManuever = manuever;
       switch (manuever)
@@ -151,13 +156,13 @@ void TaskController(void *pvParameters) {
           Kp = 1;
           Ki = 1;
           Kd = 1;
-          baseSpeed = 40;
+          baseSpeed = 80;
           break;
         case SwivelRight:
           SetPixelRGB(BODY_TOP, 100, 0, 100);
           intendedHeading = PresentHeading() + 30;
-          Kp = 1;
-          Ki = 0.5;
+          Kp = 2;
+          Ki = 1;
           Kd = 0;
           baseSpeed = 15;
           break;
@@ -165,7 +170,7 @@ void TaskController(void *pvParameters) {
           SetPixelRGB(BODY_TOP, 0, 100, 0);
           intendedHeading = PresentHeading() - 10;
           Kp = 2;
-          Ki = 0;
+          Ki = 1;
           Kd = 0;
           baseSpeed = 25;
           break;
@@ -180,7 +185,6 @@ void TaskController(void *pvParameters) {
       D = 0;
     }
 
-    SimpleGyroNavigation();
     currentHeading = PresentHeading();
 
     error = intendedHeading - currentHeading;
@@ -212,25 +216,27 @@ void TaskController(void *pvParameters) {
     //   speedLeft = u + baseSpeed;
     //     speedLeft = manuever == SwivelRight ? u + baseSpeed : baseSpeed;
     //   speedRight = manuever == SwivelLeft ? -(-u + baseSpeed - motorBias) : baseSpeed + motorBias;
-        speedLeft = u + baseSpeed;
+        // speedLeft = u + baseSpeed - motorBias;
     //   speedRight = manuever == SwivelRight ? -(-u + baseSpeed + motorBias) : baseSpeed;
-        speedRight = manuever == DriveStraight || manuever == SwivelLeft ? baseSpeed + motorBias : -baseSpeed;
+        // speedRight = manuever == DriveStraight || manuever == SwivelLeft ? baseSpeed + motorBias : -(baseSpeed + motorBias);
+        if (manuever == DriveStraight) {
+            // speedLeft = -u + baseSpeed - motorBias - 15;
+            speedLeft = -u + baseSpeed;
+            speedRight = baseSpeed + motorBias;
+        } else if (manuever == SwivelLeft) {
+            intendedHeading = PresentHeading();
+            speedLeft = u + baseSpeed - motorBias;
+            speedRight = baseSpeed + motorBias;
+        } else if (manuever == SwivelRight) {
+            speedLeft = u + baseSpeed - motorBias;
+            speedRight = -(baseSpeed + motorBias);
+        }
     }
     else {
-    //   OffEyes();
-      if(currentManuever != Backup) {
-        speedLeft = max(baseSpeed - motorBias, 0);
-        speedRight = max(baseSpeed, 0);
-      }
-      else {
-        speedLeft = baseSpeed;
-        speedRight = baseSpeed + motorBias;
-      }
-    }
-
-    if(error == 0) {
         if (manuever == DriveStraight) {
-            speedLeft = speedLeft - motorBias;
+            // speedLeft = speedLeft - motorBias;
+            speedRight = baseSpeed + motorBias;
+            speedLeft = baseSpeed;
         }
         if(manuever == SwivelLeft) {
             intendedHeading = PresentHeading() - 10;
@@ -244,7 +250,7 @@ void TaskController(void *pvParameters) {
 
     lastError = error;
 
-    speedLeft = constrain(speedLeft, -maxSpeed, maxSpeed);
+    speedLeft = constrain(speedLeft, -65, 65);
     speedRight = constrain(speedRight, -maxSpeed, maxSpeed);
     // Serial.print("Hello: ");
     // Serial.print(speedLeft);
